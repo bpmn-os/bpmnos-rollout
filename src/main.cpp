@@ -159,7 +159,11 @@ int main(int argc, char* argv[]) {
 
     for ( unsigned int scenarioId = 0; scenarioId < args.repetitions; ++scenarioId ) {
       greedyRuns.push_back( pool.submit(greedyQueue, [&, scenarioId]() {
-        auto greedyScenario = dataProvider->createScenario(scenarioId);
+        // createScenario(s) seeds the scenario at provider.seed + s. Offset by +1 so the greedy baseline
+        // samples provider.seed+1 .. provider.seed+repetitions — the same futures the rollout forks use
+        // (getSeed()+index+1), giving common random numbers between the baseline and the rollouts, and
+        // keeping both off the base seed that the live run will realize.
+        auto greedyScenario = dataProvider->createScenario(scenarioId + 1);
 
         BPMNOS::Execution::Engine greedyEngine;
         BPMNOS::Execution::GreedyController greedyController(evaluator.get());

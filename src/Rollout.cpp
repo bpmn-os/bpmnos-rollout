@@ -27,8 +27,10 @@ Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const Syste
 const BPMNOS::Model::Scenario* Rollout::forkScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index) {
   if ( auto* stochasticScenario = dynamic_cast<const StochasticScenario*>(systemState->scenario) ) {
     // Fork at spawnTime so future values resample independently; offset the seed by the repetition index
-    // so the same index yields the same resampled future across candidates (common random numbers).
-    unsigned int seed = stochasticScenario->getSeed() + index;
+    // so the same index yields the same resampled future across candidates (common random numbers). The
+    // +1 keeps every rollout off the base seed (index 0), which is the future the live run will realize —
+    // rolling out on it would let the candidate peek at the actual outcome.
+    unsigned int seed = stochasticScenario->getSeed() + index + 1;
     forkedScenario = std::make_unique<StochasticScenario>( const_cast<StochasticScenario*>(stochasticScenario), systemState->getTime() + 1, seed );
     return forkedScenario.get();
   }
