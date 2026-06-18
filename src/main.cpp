@@ -22,7 +22,7 @@ void print_usage() {
   std::cout << "\t-f, --folder <folder1> <folder2> ...: folders in which lookup tables can be found" << std::endl;
   std::cout << "\t-c, --candidates:                     max candidate decisions assessed per step (0 = all, default: 0)" << std::endl;
   std::cout << "\t-r, --repetitions:                    rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
-  std::cout << "\t-j, --threads:                        number of parallel rollout threads (default: 1)" << std::endl;
+  std::cout << "\t-j, --threads:                        number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
   std::cout << "\t-t, --timeout:                        time when execution is terminated" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
   exit(1);
@@ -154,16 +154,15 @@ int main(int argc, char* argv[]) {
   // Greedy baseline: run the greedy controller once per repetition (common random numbers via the
   // scenario id) and collect each final system state's weighted objective as the baseline the rollout is
   // compared against. The repetitions run in parallel on the thread pool (one queue).
-  unsigned int repetitions = args.repetitions ? args.repetitions : 1;
   BPMNOS::Rollout::Results greedyResults;
   {
     BPMNOS::Rollout::ThreadPool pool(args.threads);
     auto greedyQueue = pool.addQueue();
     std::mutex greedyResultsMutex;
     std::vector<std::future<void>> greedyRuns;
-    greedyRuns.reserve(repetitions);
+    greedyRuns.reserve(args.repetitions);
 
-    for ( unsigned int scenarioId = 0; scenarioId < repetitions; ++scenarioId ) {
+    for ( unsigned int scenarioId = 0; scenarioId < args.repetitions; ++scenarioId ) {
       greedyRuns.push_back( pool.submit(greedyQueue, [&, scenarioId]() {
         auto greedyScenario = dataProvider->createScenario(scenarioId);
 

@@ -3,7 +3,12 @@
 using namespace BPMNOS::Rollout;
 
 ThreadPool::ThreadPool(unsigned int threads) {
-  unsigned int count = threads ? threads : 1u;
+  // 0 requests all available hardware threads; hardware_concurrency() may itself return 0 (not computable),
+  // so fall back to a single worker in that case.
+  unsigned int count = threads ? threads : std::thread::hardware_concurrency();
+  if ( count == 0 ) {
+    count = 1u;
+  }
   workers.reserve(count);
   for ( unsigned int i = 0; i < count; ++i ) {
     workers.emplace_back([this]() { work(); });

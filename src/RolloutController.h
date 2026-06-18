@@ -43,7 +43,8 @@ namespace BPMNOS::Rollout {
  *                     a deterministic scenario uses a single rollout. Repetitions
  *                     share the same seed set across all candidates (common random
  *                     numbers) so the comparison reflects the decision, not the draw.
- *  - `threads`      — number of threads that can be used to run independent rollouts in parallel.
+ *  - `threads`      — number of threads that can be used to run independent rollouts in parallel
+ *                     (0 = use all available hardware threads).
  */
 template <typename ResultsType>
 class RolloutController : public BPMNOS::Execution::Controller {
@@ -54,7 +55,7 @@ public:
   struct Config {
     unsigned int candidates = 0;  ///< max candidate decisions assessed per contested decision (0 = all)
     unsigned int repetitions = 1; ///< rollouts per candidate for stochastic scenarios (averaged)
-    unsigned int threads = 1;     ///< number of parallel rollout threads
+    unsigned int threads = 1;     ///< number of parallel rollout threads (0 = all available hardware threads)
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 

@@ -33,7 +33,7 @@ class ThreadPool {
 public:
   using QueueId = std::size_t;
 
-  /// Creates a pool with the given number of worker threads (at least one).
+  /// Creates a pool with the given number of worker threads; 0 means use all available hardware threads.
   explicit ThreadPool(unsigned int threads);
   ~ThreadPool();
 

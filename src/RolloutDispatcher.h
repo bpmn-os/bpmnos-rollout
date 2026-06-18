@@ -13,6 +13,7 @@
 #include <future>
 #include <algorithm>
 #include <cstddef>
+#include <stdexcept>
 
 namespace BPMNOS::Rollout {
 
@@ -39,6 +40,9 @@ public:
     , threadPool(threadPool)
     , queue(threadPool.addQueue())
   {
+    if ( repetitions == 0 ) {
+      throw std::invalid_argument("RolloutDispatcher: repetitions must be at least 1");
+    }
   }
 
   std::shared_ptr<BPMNOS::Execution::Event> dispatchEvent( const BPMNOS::Execution::SystemState* systemState ) override {
@@ -75,14 +79,13 @@ public:
     results[0] = baseline;
     std::vector<std::mutex> resultMutexes( decisions.size() );
     std::vector< std::future<void> > jobs;
-    unsigned int rounds = std::max(1u, repetitions);
-    for ( std::size_t i = 1; i < decisions.size(); ++i ) {
-      for ( unsigned int repetition = 0; repetition < rounds; ++repetition ) {
-        jobs.push_back( threadPool.submit( queue, [this, &decisions, &results, &resultMutexes, systemState, i]() {
-          Rollout rollout( decisions[i], systemState, evaluator );
+    for ( std::size_t decisionIndex = 1; decisionIndex < decisions.size(); ++decisionIndex ) {
+      for ( unsigned int round = 0; round < repetitions; ++round ) {
+        jobs.push_back( threadPool.submit( queue, [this, &decisions, &results, &resultMutexes, systemState, decisionIndex, round]() {
+          Rollout rollout( decisions[decisionIndex], systemState, evaluator, round );
           if ( auto* finalState = rollout.getSystemState() ) {
-            std::lock_guard lock( resultMutexes[i] );
-            results[i].add( finalState );
+            std::lock_guard lock( resultMutexes[decisionIndex] );
+            results[decisionIndex].add( finalState );
           }
         }) );
       }
@@ -92,13 +95,13 @@ public:
     }
 
     // Dispatch the candidate with the best results; ties keep the greedy front (first maximum).
-    std::size_t best = 0;
-    for ( std::size_t i = 1; i < decisions.size(); ++i ) {
-      if ( results[i] > results[best] ) {
-        best = i;
+    std::size_t bestIndex = 0;
+    for ( std::size_t decisionIndex = 1; decisionIndex < decisions.size(); ++decisionIndex ) {
+      if ( results[decisionIndex] > results[bestIndex] ) {
+        bestIndex = decisionIndex;
       }
     }
-    return decisions[best];
+    return decisions[bestIndex];
   }
 
   void connect( BPMNOS::Execution::Mediator* mediator ) override {
