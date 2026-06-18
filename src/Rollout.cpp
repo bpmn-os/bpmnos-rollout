@@ -7,13 +7,21 @@ using namespace BPMNOS::Model;
 
 namespace BPMNOS::Rollout {
 
-Rollout::Rollout( const std::shared_ptr<Decision>& decision, const SystemState* systemState, Evaluator* evaluator, unsigned int index )
-  : scenario(forkScenario(systemState, index))
-  , systemState(std::make_unique<SystemState>( &engine, scenario, systemState ))
+Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, Evaluator* evaluator, unsigned int index )
+  : scenario(forkScenario(foreignState, index))
+  , greedyController(evaluator)
   , evaluator(evaluator)
-  , decision(cloneDecision(decision))
 {
-  // TODO: run engine with selected decision
+  // Connect the sub-engine's greedy policy before installing the state, so its cached candidate sources are
+  // subscribed when initializeSystemState announces the state and can rebuild from its pending decisions.
+  greedyController.connect(&engine);
+  timeHandler.connect(&engine);
+
+  // Install a copy of the current state, translate the selected decision onto that copy, then force the
+  // decision and simulate greedily to termination.
+  engine.initializeSystemState(scenario, foreignState);
+  decision = cloneDecision(selectedDecision);
+  engine.resume(decision);
 }
 
 const BPMNOS::Model::Scenario* Rollout::forkScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index) {
@@ -34,6 +42,7 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
   const Token* originalToken = original->token;
   auto instanceId = originalToken->getInstanceId();
   const BPMN::FlowNode* node = originalToken->node;
+  auto* systemState = engine.getSystemState();   // the copy installed by initializeSystemState
 
   // Find the equivalent token in a pending-decision list of the copied state.
   auto findToken = [instanceId, node]( auto& pending ) -> const BPMNOS::Execution::Token* {
@@ -86,7 +95,7 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
 }
 
 const SystemState* Rollout::getSystemState() const {
-  return systemState.get();
+  return engine.getSystemState();
 }
 
 } // namespace BPMNOS::Rollout

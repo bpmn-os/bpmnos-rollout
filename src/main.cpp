@@ -12,7 +12,7 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\trollout --model <model file> --data <data file> [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--timeout] [--verbose]" << std::endl;
+  std::cout << "\trollout --model <model file> --data <data file> [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--verbose]" << std::endl;
   std::cout << "\trollout -m <model file> -d <data file> [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-c] [-r] [-j] [-t] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
@@ -23,7 +23,6 @@ void print_usage() {
   std::cout << "\t-c, --candidates:                     max candidate decisions assessed per step (0 = all, default: 0)" << std::endl;
   std::cout << "\t-r, --repetitions:                    rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
   std::cout << "\t-j, --threads:                        number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
-  std::cout << "\t-t, --timeout:                        time when execution is terminated" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
   exit(1);
 }
@@ -35,7 +34,6 @@ struct Arguments {
   std::string providerName = "stochastic";
   std::string evaluatorName = "guided";
   std::vector<std::string> folders;
-  std::optional<BPMNOS::number> timeout;
   bool verbose;
   unsigned int candidates = 0;  // max candidate decisions assessed per contested decision (0 = all)
   unsigned int repetitions = 1; // rollouts per candidate for stochastic scenarios
@@ -64,9 +62,6 @@ Arguments parse_arguments(int argc, char* argv[]) {
       while (i + 1 < argc && argv[i + 1][0] != '-') {
         args.folders.push_back(argv[++i]);
       }
-    }
-    else if ((arg == "--timeout" || arg == "-t") && i + 1 < argc) {
-      args.timeout = BPMNOS::to_number(std::string(argv[++i]),BPMNOS::STRING);
     }
     else if ((arg == "--candidates" || arg == "-c") && i + 1 < argc) {
       args.candidates = static_cast<unsigned int>(std::stoul(argv[++i]));
@@ -154,7 +149,7 @@ int main(int argc, char* argv[]) {
   // Greedy baseline: run the greedy controller once per repetition (common random numbers via the
   // scenario id) and collect each final system state's weighted objective as the baseline the rollout is
   // compared against. The repetitions run in parallel on the thread pool (one queue).
-  BPMNOS::Rollout::Results greedyResults;
+  auto greedyResults = std::make_shared<BPMNOS::Rollout::Results>();
   {
     BPMNOS::Rollout::ThreadPool pool(args.threads);
     auto greedyQueue = pool.addQueue();
@@ -169,21 +164,13 @@ int main(int argc, char* argv[]) {
         BPMNOS::Execution::Engine greedyEngine;
         BPMNOS::Execution::GreedyController greedyController(evaluator.get());
         greedyController.connect(&greedyEngine);
-        BPMNOS::Execution::MyopicMessageTaskTerminator greedyMessageTaskTerminator;
         BPMNOS::Execution::TimeWarp greedyTimeHandler;
-        greedyMessageTaskTerminator.connect(&greedyEngine);
         greedyTimeHandler.connect(&greedyEngine);
-
-        if (args.timeout.has_value()) {
-          greedyEngine.run(greedyScenario.get(), args.timeout.value());
-        }
-        else {
-          greedyEngine.run(greedyScenario.get());
-        }
+        greedyEngine.run(greedyScenario.get());
 
         // The final system state is valid while greedyEngine is alive (here); add it under the lock.
         std::lock_guard greedyResultsLock(greedyResultsMutex);
-        greedyResults.add(greedyEngine.getSystemState());
+        greedyResults->add(greedyEngine.getSystemState());
       }) );
     }
 
@@ -197,20 +184,12 @@ int main(int argc, char* argv[]) {
   BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator.get(), greedyResults, config);
   controller.connect(&engine);
 
-  BPMNOS::Execution::MyopicMessageTaskTerminator messageTaskTerminator;
   BPMNOS::Execution::TimeWarp timeHandler;
-  messageTaskTerminator.connect(&engine);
   timeHandler.connect(&engine);
 
   auto recorder = createRecorder();
   recorder->subscribe(&engine);
-
-  if (args.timeout.has_value()) {
-    engine.run(scenario.get(),args.timeout.value());
-  }
-  else {
-    engine.run(scenario.get());
-  }
+  engine.run(scenario.get());
   BPMNOS::number objective = engine.getSystemState()->getWeightedObjective();
 
   std::cout << "Objective: " << objective << std::endl;

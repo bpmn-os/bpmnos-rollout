@@ -25,14 +25,15 @@ public:
   const BPMNOS::Execution::SystemState* getSystemState() const;
 
 private:
-  BPMNOS::Execution::Engine engine;                            ///< sub-engine the rollout runs in
-  std::unique_ptr<BPMNOS::Model::Scenario> forkedScenario;     ///< owns the forked scenario (null when the source scenario is reused)
-  const BPMNOS::Model::Scenario* scenario;                     ///< scenario the rollout runs on: the fork if forked, else the source
-  std::unique_ptr<BPMNOS::Execution::SystemState> systemState; ///< copy of the current system state for the rollout
+  std::unique_ptr<BPMNOS::Model::Scenario> forkedScenario;       ///< owns the forked scenario (null when the source is reused); declared first so it outlives the engine
+  const BPMNOS::Model::Scenario* scenario;                       ///< scenario the rollout runs on: the fork if forked, else the source
+  BPMNOS::Execution::Engine engine;                             ///< sub-engine the rollout runs in
+  BPMNOS::Execution::GreedyController greedyController;         ///< greedy base policy simulated in the sub-engine
+  BPMNOS::Execution::TimeWarp timeHandler;                     ///< clock handler for the sub-engine
   BPMNOS::Execution::Evaluator* evaluator;
-  std::shared_ptr<BPMNOS::Execution::Decision> decision;
+  std::shared_ptr<BPMNOS::Execution::Decision> decision;       ///< the selected decision translated onto the copied state
   const BPMNOS::Model::Scenario* forkScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index); ///< fork a stochastic scenario at spawnTime with seed offset by index (owned by forkedScenario) and return its pointer; reuse and return the original for a deterministic one
-  std::shared_ptr<BPMNOS::Execution::Decision> cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ); ///< lookup decision request and create equivalent decision
+  std::shared_ptr<BPMNOS::Execution::Decision> cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ); ///< translate the selected decision onto the engine's copied state
 };
 
 } // namespace BPMNOS::Rollout

@@ -7,6 +7,7 @@
 #include "ThreadPool.h"
 #include "RolloutDispatcher.h"
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace BPMNOS::Rollout {
@@ -14,27 +15,26 @@ namespace BPMNOS::Rollout {
 /**
  * @brief Controller selecting decisions by one-step lookahead rollout.
  *
- * The rollout controller makes desicisions assuming that entry and exit decisions
- * of activities (which are not children a SequentialAdHocSubProcess) can be made immediately
- * when they are feasible, that direct messages can be delivered immediately. Only when no
- * immediate entry, exit, or direct message delivery decision is made, it starts the rollout
- * mechanism which iterates over decision candidates, forces each candidate and completes the
- * forward simulation under a greedy policy, then dispatches the candidate yielding the best
- * final objective.
+ * The rollout controller assumes that entry and exit decisions of activities (which are not children of a
+ * SequentialAdHocSubProcess) can be made immediately when they are feasible, and that explicitly addressed
+ * messages can be delivered immediately. Only when no such immediate decision is made does it start the
+ * rollout mechanism, which iteratively applies candidate decisions completing the forward simulation
+ * under a greedy policy. It dispatches the candidate yielding the best final objective.
  *
- * Thus, the controller makes its decisions in the following order:
+ * Thus, the controller makes its decisions in the following order, dispatching the first feasible one:
  *  1. `GreedyDispatcher<FirstFeasibleExit>`  — dispatch a feasible exit immediately (exits never compete).
  *  2. `GreedyDispatcher<FirstFeasibleEntry>` — dispatch a feasible entry immediately, unless it is a
  *                         child of a SequentialAdHocSubProcess.
  *  3. `InstantDirectMessage` — dispatch an explicitly addressed message delivery immediately (the
  *                         receive specifies its sender, or the message names this recipient).
- *  4. `RolloutDispatcher<FirstBisectionalChoice>` — roll out choice requests individually.
- *  5. `RolloutDispatcher<SequentialEntries>` and `RolloutDispatcher<MessageDeliveries>` — roll out the
- *                         remaining contested groups, which have no precedence between them:
- *                         sequential-ad-hoc child entries and message deliveries.
+ *  4. `RolloutDispatcher<FirstEnumeratedChoice>` — roll out the alternatives of a choice request.
+ *  5. `RolloutDispatcher<CompetingCandidates>` — roll out the remaining contested decisions, which have no
+ *                         precedence between them: sequential-ad-hoc child entries and message deliveries,
+ *                         merged into a single reward-ordered collection.
  *
  * Templated on the results type (the aggregation/selection policy); header-only so it never assumes a
- * particular results type.
+ * particular results type. The baseline against which rollouts are compared is held by `shared_ptr` and
+ * advanced (moved) to the winner's results, so a heavy results type is never deep-copied.
  *
  * Parameters:
  *  - `candidates`   — maximum number of options assessed per contested decision
@@ -46,7 +46,7 @@ namespace BPMNOS::Rollout {
  *  - `threads`      — number of threads that can be used to run independent rollouts in parallel
  *                     (0 = use all available hardware threads).
  */
-template <typename ResultsType>
+template <ResultsPolicy ResultsType>
 class RolloutController : public BPMNOS::Execution::Controller {
 public:
   /**
@@ -59,29 +59,25 @@ public:
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
-  RolloutController(BPMNOS::Execution::Evaluator* evaluator, const ResultsType& greedyResults, Config config = default_config())
+  RolloutController(BPMNOS::Execution::Evaluator* evaluator, std::shared_ptr<ResultsType> greedyResults, Config config = default_config())
     : config(config)
-    , baselineResults(greedyResults)
+    , baselineResults(std::move(greedyResults))
     , threadPool(config.threads)
   {
     using namespace BPMNOS::Execution;
-    // Prioritized layer: dispatch the first feasible decision. Entry, exit, and direct message delivery
-    // never branch, so they are dispatched greedily from the same Candidates sources as GreedyController.
-    prioritizedDispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleExit>>(evaluator) );
-    prioritizedDispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
-    prioritizedDispatchers.push_back( std::make_unique<InstantDirectMessage>() );
-//    prioritizedDispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
-    prioritizedDispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
-    // Competing layer: best-of-best over the contested decisions.
-    competingDispatchers.push_back( std::make_unique<RolloutDispatcher<SequentialEntries, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) ); // sequential ad-hoc entries only
-    competingDispatchers.push_back( std::make_unique<RolloutDispatcher<MessageDeliveries, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+    // Dispatch the first feasible decision in priority order. Exit, entry, and direct message delivery never
+    // branch, so they are dispatched greedily from the same Candidates collections as GreedyController; the
+    // contested choice, and the merged sequential entries and message deliveries, are rolled out. All rollout
+    // dispatchers share the same baseline, advanced in place to a winner's results.
+    dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleExit>>(evaluator) );
+    dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
+    dispatchers.push_back( std::make_unique<InstantDirectMessage>() );
+    dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+    dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) ); // sequential ad-hoc entries and message deliveries
   }
 
   void connect(BPMNOS::Execution::Mediator* mediator) override {
-    for ( auto& eventDispatcher : prioritizedDispatchers ) {
-      eventDispatcher->connect(this);
-    }
-    for ( auto& eventDispatcher : competingDispatchers ) {
+    for ( auto& eventDispatcher : dispatchers ) {
       eventDispatcher->connect(this);
     }
     BPMNOS::Execution::Controller::connect(mediator);
@@ -90,8 +86,8 @@ public:
 protected:
   std::shared_ptr<BPMNOS::Execution::Event> dispatchEvent(const BPMNOS::Execution::SystemState* systemState) override {
     using namespace BPMNOS::Execution;
-    // Instant layer: dispatch the first feasible decision in priority order.
-    for ( auto& eventDispatcher : prioritizedDispatchers ) {
+    // Dispatch the first feasible decision in priority order; forward any non-decision event immediately.
+    for ( auto& eventDispatcher : dispatchers ) {
       if ( auto event = eventDispatcher->dispatchEvent(systemState) ) {
         if ( auto decision = dynamic_pointer_cast<Decision>(event) ) {
           if ( decision->reward().has_value() ) {
@@ -105,38 +101,14 @@ protected:
       }
     }
 
-    // Competing layer: dispatch the best evaluated decision (best-of-best).
-    std::shared_ptr<Decision> best = nullptr;
-    for ( auto& eventDispatcher : competingDispatchers ) {
-      if ( auto event = eventDispatcher->dispatchEvent(systemState) ) {
-        if ( auto decision = dynamic_pointer_cast<Decision>(event) ) {
-          if ( decision->reward().has_value() ) {
-            if ( !best ) {
-              // first feasible decision is used as best
-              best = decision;
-            }
-            else if ( decision->reward().value() > best->reward().value() ) {
-              // decision has better reward than current best
-              best = decision;
-            }
-          }
-        }
-        else {
-          // events are immediately forwarded
-          return event;
-        }
-      }
-    }
-
-    return best;
+    return nullptr;
   }
 
 private:
   Config config;
-  ResultsType baselineResults;   ///< Baseline the rollout compares against; starts as the greedy result, updated to the winner's result whenever a non-greedy candidate is dispatched.
+  std::shared_ptr<ResultsType> baselineResults;   ///< Baseline the rollout compares against; starts as the greedy result, reseated to the winner's result whenever a non-greedy candidate is dispatched. Shared by reference with every rollout dispatcher.
   ThreadPool threadPool;         ///< Shared pool the rollout dispatchers run their rollouts on (sized config.threads).
-  std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > prioritizedDispatchers;   ///< Dispatched first-feasible in priority order.
-  std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > competingDispatchers;     ///< Dispatched by best-of-best rolled-out objective.
+  std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > dispatchers;   ///< Dispatched first-feasible in priority order.
 };
 
 } // namespace BPMNOS::Rollout
