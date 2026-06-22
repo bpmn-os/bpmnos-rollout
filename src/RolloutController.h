@@ -56,6 +56,7 @@ public:
     unsigned int candidates = 0;  ///< max candidate decisions assessed per contested decision (0 = all)
     unsigned int repetitions = 1; ///< rollouts per candidate for stochastic scenarios (averaged)
     unsigned int threads = 1;     ///< number of parallel rollout threads (0 = all available hardware threads)
+    bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice.
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
@@ -72,7 +73,12 @@ public:
     dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleExit>>(evaluator) );
     dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
     dispatchers.push_back( std::make_unique<InstantDirectMessage>() );
-    dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+    if ( config.bisection ) {
+      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+    }
+    else {
+      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+    }
     dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) ); // sequential ad-hoc entries and message deliveries
   }
 
