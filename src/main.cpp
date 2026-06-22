@@ -12,7 +12,7 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\trollout --model <model file> --data <data file> [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--verbose]" << std::endl;
+  std::cout << "\trollout --model <model file> --data <data file> [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--bsiection] [--verbose]" << std::endl;
   std::cout << "\trollout -m <model file> -d <data file> [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-c] [-r] [-j] [-t] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
@@ -23,6 +23,7 @@ void print_usage() {
   std::cout << "\t-c, --candidates:                     max candidate decisions assessed per step (0 = all, default: 0)" << std::endl;
   std::cout << "\t-r, --repetitions:                    rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
   std::cout << "\t-j, --threads:                        number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
+  std::cout << "\t-b, --bisection:                      use bisection for choices" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
   exit(1);
 }
@@ -34,7 +35,8 @@ struct Arguments {
   std::string providerName = "stochastic";
   std::string evaluatorName = "guided";
   std::vector<std::string> folders;
-  bool verbose;
+  bool bisection = false;
+  bool verbose = false;
   unsigned int candidates = 0;  // max candidate decisions assessed per contested decision (0 = all)
   unsigned int repetitions = 1; // rollouts per candidate for stochastic scenarios
   unsigned int threads = 1;     // number of parallel rollout threads
@@ -71,6 +73,9 @@ Arguments parse_arguments(int argc, char* argv[]) {
     }
     else if ((arg == "--threads" || arg == "-j") && i + 1 < argc) {
       args.threads = static_cast<unsigned int>(std::stoul(argv[++i]));
+    }
+    else if ((arg == "--bisection" || arg == "-b")) {
+      args.bisection = true;
     }
     else if ((arg == "--verbose" || arg == "-v")) {
       args.verbose = true;
@@ -184,7 +189,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ args.candidates, args.repetitions, args.threads };
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ args.candidates, args.repetitions, args.threads, args.bisection };
   BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator.get(), greedyResults, config);
   controller.connect(&engine);
 
