@@ -45,6 +45,9 @@ include_directories(
   ${CMAKE_BINARY_DIR}/_deps/limex-src/
 )
 
+# Test suite (Catch2). The `run_tests` target is EXCLUDE_FROM_ALL; build/run it via the `tests` target.
+add_subdirectory(tests)
+
 # Standalone application
 add_executable(bpmnos-rollout
   src/main.cpp
