@@ -4,6 +4,7 @@
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
 #include <memory>
+#include <mutex>
 
 namespace BPMNOS::Rollout {
 
@@ -19,20 +20,23 @@ namespace BPMNOS::Rollout {
  */
 class Rollout {
 public:
-  Rollout( const std::shared_ptr<BPMNOS::Execution::Decision>& decision, const BPMNOS::Execution::SystemState* systemState, BPMNOS::Execution::Evaluator* evaluator, unsigned int index );
+  /// The engine is not internally synchronized; copyMutex (owned by the dispatcher and shared across the
+  /// dispatch's parallel rollouts) serializes the deep copy of the shared source state, which reads the
+  /// engine's lazily-pruning containers that mutate on read.
+  Rollout( const std::shared_ptr<BPMNOS::Execution::Decision>& decision, const BPMNOS::Execution::SystemState* systemState, BPMNOS::Execution::Evaluator* evaluator, unsigned int index, std::mutex& copyMutex );
 
   /// Final state reached by the rollout (the copied system state, valid while this Rollout lives).
   const BPMNOS::Execution::SystemState* getSystemState() const;
 
 private:
-  std::unique_ptr<BPMNOS::Model::Scenario> forkedScenario;       ///< owns the forked scenario (null when the source is reused); declared first so it outlives the engine
+  std::unique_ptr<BPMNOS::Model::Scenario> forkedScenario;       ///< owns the per-rollout scenario (stochastic fork or deterministic clone); declared first so it outlives the engine
   const BPMNOS::Model::Scenario* scenario;                       ///< scenario the rollout runs on: the fork if forked, else the source
   BPMNOS::Execution::Engine engine;                             ///< sub-engine the rollout runs in
   BPMNOS::Execution::GreedyController greedyController;         ///< greedy base policy simulated in the sub-engine
   BPMNOS::Execution::TimeWarp timeHandler;                     ///< clock handler for the sub-engine
   BPMNOS::Execution::Evaluator* evaluator;
   std::shared_ptr<BPMNOS::Execution::Decision> decision;       ///< the selected decision translated onto the copied state
-  const BPMNOS::Model::Scenario* forkScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index); ///< fork a stochastic scenario at spawnTime with seed offset by index (owned by forkedScenario) and return its pointer; reuse and return the original for a deterministic one
+  const BPMNOS::Model::Scenario* forkScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index); ///< fork a stochastic scenario (seed offset by index) or clone a deterministic one (owned by forkedScenario) and return its pointer
   std::shared_ptr<BPMNOS::Execution::Decision> cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ); ///< translate the selected decision onto the engine's copied state
 };
 

@@ -1,0 +1,10 @@
+ClientId,ServerId,Costs
+"Client1","Server1",1
+"Client1","Server2",2
+"Client1","Server3",5
+"Client2","Server1",3
+"Client2","Server2",20
+"Client2","Server3",20
+"Client3","Server1",4
+"Client3","Server2",6
+"Client3","Server3",5

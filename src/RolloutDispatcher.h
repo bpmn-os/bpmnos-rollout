@@ -107,7 +107,7 @@ public:
     for ( std::size_t decisionIndex = 1; decisionIndex < decisions.size(); ++decisionIndex ) {
       for ( unsigned int round = 0; round < repetitions; ++round ) {
         jobs.push_back( threadPool.submit( queues[decisionIndex], [this, &decisions, &results, &resultMutexes, systemState, decisionIndex, round]() {
-          Rollout rollout( decisions[decisionIndex], systemState, evaluator, round );
+          Rollout rollout( decisions[decisionIndex], systemState, evaluator, round, copyMutex );
           if ( auto* finalState = rollout.getSystemState() ) {
             std::lock_guard lock( resultMutexes[decisionIndex] );
             results[decisionIndex]->add( finalState );
@@ -164,6 +164,7 @@ protected:
   unsigned int repetitions;         ///< rollouts per non-greedy candidate
   ThreadPool& threadPool;           ///< shared pool the rollouts run on
   std::vector<ThreadPool::QueueId> queues;   ///< one queue per candidate, grown lazily and reused across dispatches
+  std::mutex copyMutex;             ///< serializes each rollout's deep copy of the shared source state (the engine is not internally synchronized; the copy reads lazily-pruning containers that mutate on read)
 };
 
 } // namespace BPMNOS::Rollout

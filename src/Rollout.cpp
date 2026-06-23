@@ -7,7 +7,7 @@ using namespace BPMNOS::Model;
 
 namespace BPMNOS::Rollout {
 
-Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, Evaluator* evaluator, unsigned int index )
+Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, Evaluator* evaluator, unsigned int index, std::mutex& copyMutex )
   : scenario(forkScenario(foreignState, index))
   , greedyController(evaluator)
   , evaluator(evaluator)
@@ -17,9 +17,14 @@ Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const Syste
   greedyController.connect(&engine);
   timeHandler.connect(&engine);
 
-  // Install a copy of the current state, translate the selected decision onto that copy, then force the
-  // decision and simulate greedily to termination.
-  engine.initializeSystemState(scenario, foreignState);
+  // Install a copy of the current state under copyMutex: the deep copy reads the shared foreign state's
+  // lazily-pruning containers, which erase expired entries on read, so concurrent rollouts of one dispatch
+  // must not copy at the same time. The forked scenario above is a read-only copy, hence outside the lock;
+  // cloneDecision and the simulation below run on this rollout's private copy, also outside the lock.
+  {
+    std::lock_guard<std::mutex> lock(copyMutex);
+    engine.initializeSystemState(scenario, foreignState);
+  }
   decision = cloneDecision(selectedDecision);
   engine.resume(decision);
 }
@@ -34,8 +39,10 @@ const BPMNOS::Model::Scenario* Rollout::forkScenario(const BPMNOS::Execution::Sy
     forkedScenario = std::make_unique<StochasticScenario>( const_cast<StochasticScenario*>(stochasticScenario), systemState->getTime() + 1, seed );
     return forkedScenario.get();
   }
-  // For deterministic scenarios, just return the original pointer to be re-used.
-  return systemState->scenario;
+  // Deterministic scenarios are cloned so each sub-engine gets its own per-run memoization maps
+  // (taskCompletionStatus / activityArrivalStatus); sharing one scenario would race under parallel rollouts.
+  forkedScenario = systemState->scenario->clone();
+  return forkedScenario.get();
 }
 
 
@@ -46,16 +53,25 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
   const BPMN::FlowNode* node = originalToken->node;
   auto* systemState = engine.getSystemState();   // the copy installed by initializeSystemState
 
-  // Find the equivalent token in a pending-decision list of the copied state.
-  auto findToken = [instanceId, node]( auto& pending ) -> const BPMNOS::Execution::Token* {
+  // Find the equivalent token in a pending-decision list of the copied state. The (instance, node) pair must
+  // identify it unambiguously, and — because the copy is a deep copy of the foreign state — the corresponding
+  // token must carry an identical status; otherwise the rollout would force a decision on a different state.
+  auto findToken = [instanceId, node, originalToken]( auto& pending ) -> const BPMNOS::Execution::Token* {
+    const BPMNOS::Execution::Token* found = nullptr;
     for ( auto& [token_ptr,_] : pending ) {
       if ( auto token = token_ptr.lock() ) {
         if ( token->getInstanceId() == instanceId && token->node == node ) {
-          return token.get();
+          assert( !found && "Rollout: ambiguous token match — more than one pending token has this instance and node" );
+          found = token.get();
         }
       }
     }
-    throw std::logic_error("Rollout: cannot find token at node '" + node->id + "' for instance '" + BPMNOS::to_string(instanceId, STRING) + "'");
+    if ( !found ) {
+      throw std::logic_error("Rollout: cannot find token at node '" + node->id + "' for instance '" + BPMNOS::to_string(instanceId, STRING) + "'");
+    }
+    assert( found->node == originalToken->node && "Rollout: cloned token has a different node than the original" );
+    assert( found->status == originalToken->status && "Rollout: cloned token status differs from the original (deep copy not faithful)" );
+    return found;
   };
 
   // Create the equivalent decision for the copied token, carrying the same data.
@@ -83,14 +99,21 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
       auto origin = originalMessage->origin;
       const auto& sender = originalMessage->header[BPMNOS::Model::MessageDefinition::Index::Sender];
       assert(sender.has_value());
+      // The (origin, sender) pair must identify a single created message in the copy; ambiguity would let the
+      // rollout force delivery of the wrong message.
+      const Message* match = nullptr;
       for ( auto& message : systemState->messages ) {
         if ( message->state == Message::State::CREATED && message->origin == origin
           && message->header[BPMNOS::Model::MessageDefinition::Index::Sender] == sender )
         {
-          return std::make_shared<MessageDeliveryDecision>(token, message.get(), evaluator);
+          assert( !match && "Rollout: ambiguous message match — more than one created message has this origin and sender" );
+          match = message.get();
         }
       }
-      throw std::logic_error("Rollout: cannot find message with origin '" + origin->id + "' sent from '" + BPMNOS::to_string(sender.value(), STRING) + "'");
+      if ( !match ) {
+        throw std::logic_error("Rollout: cannot find message with origin '" + origin->id + "' sent from '" + BPMNOS::to_string(sender.value(), STRING) + "'");
+      }
+      return std::make_shared<MessageDeliveryDecision>(token, match, evaluator);
     }
   }
   throw std::logic_error("Rollout: unexpected error");

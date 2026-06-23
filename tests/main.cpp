@@ -29,3 +29,6 @@ using namespace BPMNOS;
 
 // Include all rollout tests here.
 #include "threadpool/test.h"
+#include "examples/travelling_salesperson_problem/test.h"
+#include "examples/assignment_problem/test.h"
+#include "examples/job_shop_scheduling_problem/test.h"
