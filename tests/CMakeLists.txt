@@ -20,6 +20,7 @@ add_executable(run_tests EXCLUDE_FROM_ALL
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/Results.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/Rollout.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThreadPool.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/DecisionCounter.cpp
 )
 
 target_compile_options(run_tests PRIVATE -O0 -g -ggdb3)

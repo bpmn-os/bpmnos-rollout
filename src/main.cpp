@@ -3,6 +3,9 @@
 #include <string>
 #include <future>
 #include <mutex>
+#include <cmath>
+#include <algorithm>
+#include <cstddef>
 #include <bpmn++.h>
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
@@ -20,8 +23,9 @@ void print_usage() {
   std::cout << "\t-p, --provider {static|expected|dynamic|stochastic} (default: stochastic)" << std::endl;
   std::cout << "\t-e, --evaluator {local|guided} (default: guided)" << std::endl;
   std::cout << "\t-f, --folder <folder1> <folder2> ...: folders in which lookup tables can be found" << std::endl;
-  std::cout << "\t-c, --candidates:                     max candidate decisions assessed per step (0 = all, default: 0)" << std::endl;
+  std::cout << "\t-ca, --candidates:                     max candidate decisions assessed per step (0 = unlimited, default)" << std::endl;
   std::cout << "\t-r, --repetitions:                    rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
+  std::cout << "\t-cu, --cutoff:                        max number of decisions made before switching to greedy (0 = unlimited, default)" << std::endl;
   std::cout << "\t-j, --threads:                        number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
   std::cout << "\t-b, --bisection:                      use bisection for choices" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
@@ -37,8 +41,9 @@ struct Arguments {
   std::vector<std::string> folders;
   bool bisection = false;
   bool verbose = false;
-  unsigned int candidates = 0;  // max candidate decisions assessed per contested decision (0 = all)
+  unsigned int candidates = 0;  // max candidate decisions to be rolled out (0 = unlimited)
   unsigned int repetitions = 1; // rollouts per candidate for stochastic scenarios
+  double cutoff = 0.0;          // fraction of greedy baseline decisions to be actually rolled out (0.0 = unlimited)
   unsigned int threads = 1;     // number of parallel rollout threads
 };
 
@@ -65,11 +70,14 @@ Arguments parse_arguments(int argc, char* argv[]) {
         args.folders.push_back(argv[++i]);
       }
     }
-    else if ((arg == "--candidates" || arg == "-c") && i + 1 < argc) {
+    else if ((arg == "--candidates" || arg == "-ca") && i + 1 < argc) {
       args.candidates = static_cast<unsigned int>(std::stoul(argv[++i]));
     }
     else if ((arg == "--repetitions" || arg == "-r") && i + 1 < argc) {
       args.repetitions = static_cast<unsigned int>(std::stoul(argv[++i]));
+    }
+    else if ((arg == "--cutoff" || arg == "-cu") && i + 1 < argc) {
+      args.cutoff = static_cast<double>(std::stod(argv[++i]));
     }
     else if ((arg == "--threads" || arg == "-j") && i + 1 < argc) {
       args.threads = static_cast<unsigned int>(std::stoul(argv[++i]));
@@ -145,9 +153,7 @@ int main(int argc, char* argv[]) {
   };
 
   auto dataProvider = createDataProvider();
-  auto scenario = dataProvider->createScenario();
 
-  BPMNOS::Execution::Engine engine;
 
   auto evaluator = createEvaluator();
 
@@ -155,6 +161,8 @@ int main(int argc, char* argv[]) {
   // scenario id) and collect each final system state's weighted objective as the baseline the rollout is
   // compared against. The repetitions run in parallel on the thread pool (one queue).
   auto greedyResults = std::make_shared<BPMNOS::Rollout::Results>();
+  // For the cutoff: count the rolled-out decisions of each greedy baseline run and keep the maximum.
+  std::size_t maxDecisionCount = 0;
   {
     BPMNOS::Rollout::ThreadPool pool(args.threads);
     auto greedyQueue = pool.addQueue();
@@ -170,9 +178,11 @@ int main(int argc, char* argv[]) {
         // keeping both off the base seed that the live run will realize.
         auto greedyScenario = dataProvider->createScenario(scenarioId + 1);
 
+        BPMNOS::Rollout::DecisionCounter greedyDecisionCounter;   // declared before the engine so it outlives it
         BPMNOS::Execution::Engine greedyEngine;
         BPMNOS::Execution::GreedyController greedyController(evaluator.get());
         greedyController.connect(&greedyEngine);
+        greedyDecisionCounter.connect(&greedyEngine);   // count the baseline's rolled-out decisions for the cutoff
         BPMNOS::Execution::TimeWarp greedyTimeHandler;
         greedyTimeHandler.connect(&greedyEngine);
         greedyEngine.run(greedyScenario.get());
@@ -180,6 +190,7 @@ int main(int argc, char* argv[]) {
         // The final system state is valid while greedyEngine is alive (here); add it under the lock.
         std::lock_guard greedyResultsLock(greedyResultsMutex);
         greedyResults->add(greedyEngine.getSystemState());
+        maxDecisionCount = std::max(maxDecisionCount, greedyDecisionCounter.count());
       }) );
     }
 
@@ -188,8 +199,11 @@ int main(int argc, char* argv[]) {
       greedyRun.get();
     }
   }
-
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ args.candidates, args.repetitions, args.threads, args.bisection };
+  
+  auto scenario = dataProvider->createScenario();
+  BPMNOS::Execution::Engine engine;
+  auto cutoff = (unsigned int)std::ceil(args.cutoff * (double)maxDecisionCount);
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ args.candidates, args.repetitions, cutoff, args.threads, args.bisection };
   BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator.get(), greedyResults, config);
   controller.connect(&engine);
 

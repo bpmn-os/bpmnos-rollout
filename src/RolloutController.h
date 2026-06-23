@@ -6,6 +6,7 @@
 #include "Results.h"
 #include "ThreadPool.h"
 #include "RolloutDispatcher.h"
+#include "DecisionCounter.h"
 #include <memory>
 #include <utility>
 #include <vector>
@@ -35,16 +36,6 @@ namespace BPMNOS::Rollout {
  * Templated on the results type (the aggregation/selection policy); header-only so it never assumes a
  * particular results type. The baseline against which rollouts are compared is held by `shared_ptr` and
  * advanced (moved) to the winner's results, so a heavy results type is never deep-copied.
- *
- * Parameters:
- *  - `candidates`   — maximum number of options assessed per contested decision
- *                     (0 = all), pre-ranked by local evaluation.
- *  - `repetitions`  — rollouts per candidate for stochastic scenarios (averaged);
- *                     a deterministic scenario uses a single rollout. Repetitions
- *                     share the same seed set across all candidates (common random
- *                     numbers) so the comparison reflects the decision, not the draw.
- *  - `threads`      — number of threads that can be used to run independent rollouts in parallel
- *                     (0 = use all available hardware threads).
  */
 template <ResultsPolicy ResultsType>
 class RolloutController : public BPMNOS::Execution::Controller {
@@ -53,9 +44,10 @@ public:
    * @brief Rollout parameters.
    */
   struct Config {
-    unsigned int candidates = 0;  ///< max candidate decisions assessed per contested decision (0 = all)
+    unsigned int candidates = 0;  ///< max candidate decisions to be rolled out (0 = unlimited)
     unsigned int repetitions = 1; ///< rollouts per candidate for stochastic scenarios (averaged)
-    unsigned int threads = 1;     ///< number of parallel rollout threads (0 = all available hardware threads)
+    unsigned int cutoff = 0;      ///< max number of decisions made before switching to greedy (0 = unlimited)
+    unsigned int threads = 1;     ///< number of threads used for rollouts (0 = all available hardware threads)
     bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice.
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
@@ -74,19 +66,28 @@ public:
     dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
     dispatchers.push_back( std::make_unique<InstantDirectMessage>() );
     if ( config.bisection ) {
-      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, this) );
     }
     else {
-      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) );
+      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, this) );
     }
-    dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, baselineResults, config.candidates, config.repetitions, threadPool) ); // sequential ad-hoc entries and message deliveries
+    dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
   }
 
   void connect(BPMNOS::Execution::Mediator* mediator) override {
     for ( auto& eventDispatcher : dispatchers ) {
       eventDispatcher->connect(this);
     }
+    if ( config.cutoff ) {
+      decisionCounter.connect(mediator);   // count rolled-out decisions only when a cutoff is set (no overhead otherwise)
+    }
     BPMNOS::Execution::Controller::connect(mediator);
+  }
+
+  /// True once the number of rolled-out decisions dispatched on the main engine reaches the cutoff; the
+  /// rollout dispatchers then fall back to greedy. `config.cutoff == 0` means no cutoff (never true).
+  bool cutoff() const {
+    return config.cutoff && decisionCounter.count() >= config.cutoff;
   }
 
 protected:
@@ -111,9 +112,15 @@ protected:
   }
 
 private:
+  // The rollout dispatchers hold a back-pointer to this controller and read config, threadPool,
+  // baselineResults, and cutoff() through it.
+  template <BPMNOS::Execution::CandidateCollection C, ResultsPolicy R>
+  friend class RolloutDispatcher;
+
   Config config;
-  std::shared_ptr<ResultsType> baselineResults;   ///< Baseline the rollout compares against; starts as the greedy result, reseated to the winner's result whenever a non-greedy candidate is dispatched. Shared by reference with every rollout dispatcher.
+  std::shared_ptr<ResultsType> baselineResults;   ///< Baseline the rollout compares against; starts as the greedy result, reseated to the winner's result whenever a non-greedy candidate is dispatched. Read (and advanced) by every rollout dispatcher via the back-pointer.
   ThreadPool threadPool;         ///< Shared pool the rollout dispatchers run their rollouts on (sized config.threads).
+  DecisionCounter decisionCounter;   ///< counts rolled-out decisions on the main engine; consulted by cutoff() (subscribed only when config.cutoff != 0)
   std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > dispatchers;   ///< Dispatched first-feasible in priority order.
 };
 

@@ -54,6 +54,7 @@ add_executable(bpmnos-rollout
   src/Results.cpp
   src/Rollout.cpp
   src/ThreadPool.cpp
+  src/DecisionCounter.cpp
 )
 
 target_compile_options(bpmnos-rollout PRIVATE -O2)
