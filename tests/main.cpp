@@ -32,3 +32,4 @@ using namespace BPMNOS;
 #include "examples/travelling_salesperson_problem/test.h"
 #include "examples/assignment_problem/test.h"
 #include "examples/job_shop_scheduling_problem/test.h"
+#include "examples/bin_packing_problem/test.h"

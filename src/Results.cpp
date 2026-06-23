@@ -63,7 +63,7 @@ double Results::standardDeviation() const {
 
 double Results::lowerPredictionBound() const {
   std::size_t k = weightedObjectives.size();
-  // The incumbent must be fully sampled; with fewer than two rollouts the catastrophe bound is undefined,
+  // The incumbent must be fully sampled; with fewer than two rollouts the bound is undefined,
   // and silently disabling it would let catastrophic candidates pass unnoticed.
   if ( k < 2 ) throw std::logic_error("Results::lowerPredictionBound: incumbent needs at least two rollouts");
   return mean() - level_1.critical(k - 1) * standardDeviation() * std::sqrt(1.0 + 1.0 / (double)k);
@@ -80,12 +80,10 @@ bool Results::dominates(const Results& other) const {
   // have that run to assess; an empty candidate is a contract violation, not a state to silently skip.
   if ( other.weightedObjectives.empty() ) throw std::logic_error("Results::dominates: candidate has no rollout to assess");
 
-  // Test 1 (catastrophe): the just-added candidate run is implausibly bad for the incumbent's distribution.
-  // lowerPredictionBound throws if the incumbent is not fully sampled (fewer than two rollouts).
+  // Results are dominated if the performance of the last rollout is significnatly worse than the baseline.
   if ( other.weightedObjectives.back() < lowerPredictionBound() ) return true;
 
-  // Test 2 (collectively worse): applies once the candidate has the two runs needed to bound its mean;
-  // before that there is genuinely no collective estimate yet, so the test simply does not apply.
+  // Other results are dominated if they are worse on averaged than the baseline.
   if ( other.weightedObjectives.size() >= 2 && other.meanUpperBound() < mean() ) return true;
 
   return false;
