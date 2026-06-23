@@ -112,8 +112,10 @@ public:
             std::lock_guard lock( resultMutexes[decisionIndex] );
             results[decisionIndex]->add( finalState );
             // Cancel this candidate's remaining repetitions once the baseline provably dominates it.
+            // Skipped when repetitions == 1: there are no remaining reps to cancel, so the early-stopping
+            // test (and its overhead) is never incurred.
             if constexpr ( requires ( const ResultsType& a, const ResultsType& b ) { { a.dominates(b) } -> std::convertible_to<bool>; } ) {
-              if ( baseline->dominates( *results[decisionIndex] ) ) {
+              if ( repetitions > 1 && baseline->dominates( *results[decisionIndex] ) ) {
                 threadPool.clearQueue( queues[decisionIndex] );
               }
             }
