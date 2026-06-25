@@ -58,7 +58,7 @@ public:
   RolloutController(BPMNOS::Execution::Evaluator* evaluator, std::shared_ptr<ResultsType> greedyResults, Config config = default_config(), std::unique_ptr<BPMNOS::Execution::Recorder> logger = nullptr)
     : config(config)
     , baselineResults(std::move(greedyResults))
-    , logger(logger ? std::move(logger) : nullptr)
+    , logger(std::move(logger))
     , threadPool(config.threads)
   {
     using namespace BPMNOS::Execution;
