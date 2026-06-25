@@ -166,7 +166,7 @@ public:
       // runs serially on the main engine, so writing to std::cout here is not racy.
       if constexpr ( requires ( const ResultsType& r ) { { r.stringify() } -> std::convertible_to<std::string>; } ) {
         if ( controller->config.verbose ) {
-          std::println("{:.1f}s: {}", controller->elapsedSeconds(), controller->baselineResults->stringify());
+          std::println("{:.1f}\t{}", controller->elapsedSeconds(), controller->baselineResults->stringify());
         }
       }
     }

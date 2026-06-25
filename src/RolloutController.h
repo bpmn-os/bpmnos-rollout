@@ -74,6 +74,12 @@ public:
       dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, this) );
     }
     dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
+    if constexpr ( requires ( const ResultsType& r ) { { r.stringify() } -> std::convertible_to<std::string>; } ) {
+      if ( config.verbose ) {
+        std::println("\nTime\tBestResults");
+        std::println("0.0\t{}", baselineResults->stringify());
+      }
+    }
   }
 
   void connect(BPMNOS::Execution::Mediator* mediator) override {

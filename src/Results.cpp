@@ -48,12 +48,16 @@ void Results::add(const BPMNOS::Execution::SystemState* systemState) {
 }
 
 std::string Results::stringify() const {
+  if ( weightedObjectives.empty() ) {
+    return std::string("n/a");
+  }
+  
   std::string summary = std::format("{}", mean());
   // Show the spread only when there is more than one rollout to span (a single rollout's min and max
   // are just its mean, so the bracket would add nothing).
   if ( weightedObjectives.size() > 1 ) {
     auto [min, max] = std::ranges::minmax(weightedObjectives);
-    summary += std::format(" [{},{}]", min, max);
+    summary += std::format("\t[{},{}]", min, max);
   }
   return summary;
 }

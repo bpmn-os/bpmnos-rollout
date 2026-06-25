@@ -55,7 +55,7 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
       auto scenario = provider.createScenario();   // base seed 0; rollouts fork at 1..repetitions
       BPMNOS::Execution::Engine engine;
       BPMNOS::Execution::Recorder recorder;
-      Controller controller(&evaluator, greedyResults, { .repetitions = repetitions, .threads = 1 });
+      Controller controller(&evaluator, greedyResults, { .repetitions = repetitions, .threads = 1, .verbose = true });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
