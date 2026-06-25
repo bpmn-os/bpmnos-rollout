@@ -15,7 +15,7 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\trollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--bsiection] [--verbose]" << std::endl;
+  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--bsiection] [--verbose]" << std::endl;
   std::cout << "\trollout -m <model file> -d <data file> [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-c] [-r] [-j] [-t] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
