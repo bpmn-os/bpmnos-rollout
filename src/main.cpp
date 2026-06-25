@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
   // tab-separated table when no logger is given).
   std::unique_ptr<BPMNOS::Execution::Recorder> logger;
   if (args.verbose) {
-    logger = std::make_unique<BPMNOS::Execution::Recorder>(BPMNOS::Execution::Recorder::Config{ .stream = std::cerr, .colored = true });
+    logger = std::make_unique<BPMNOS::Execution::Recorder>(BPMNOS::Execution::Recorder::Config{ .stream = std::cout, .colored = true });
     logger->subscribe(&engine);
   }
 
