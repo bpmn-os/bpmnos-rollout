@@ -7,6 +7,7 @@
 #include <array>
 #include <compare>
 #include <cstddef>
+#include <string>
 
 namespace BPMNOS::Rollout {
 
@@ -27,6 +28,9 @@ class Results {
 public:
   std::vector<double> weightedObjectives; ///< Weighted objective of each recorded rollout.
   void add(const BPMNOS::Execution::SystemState* systemState);
+
+  /// Human-readable summary: the mean, plus "[<min>,<max>]" when more than one rollout was recorded.
+  std::string stringify() const;
 
   /// Order by expected value: a better-expected result compares greater; equality means equal expected value.
   std::partial_ordering operator<=>(const Results& other) const;

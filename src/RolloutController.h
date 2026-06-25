@@ -10,6 +10,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <chrono>
 
 namespace BPMNOS::Rollout {
 
@@ -49,6 +50,7 @@ public:
     unsigned int cutoff = 0;      ///< max number of decisions made before switching to greedy (0 = unlimited)
     unsigned int threads = 1;     ///< number of threads used for rollouts (0 = all available hardware threads)
     bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice.
+    bool verbose = true;         ///< If true, report each baseline update (when the results type supports it).
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
@@ -90,6 +92,12 @@ public:
     return config.cutoff && decisionCounter.count() >= config.cutoff;
   }
 
+  /// Wall-clock seconds elapsed since this controller was constructed (≈ since the live run started);
+  /// read by the rollout dispatchers to report when each baseline update landed.
+  double elapsedSeconds() const {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
+  }
+
 protected:
   std::shared_ptr<BPMNOS::Execution::Event> dispatchEvent(const BPMNOS::Execution::SystemState* systemState) override {
     using namespace BPMNOS::Execution;
@@ -118,6 +126,7 @@ private:
   friend class RolloutDispatcher;
 
   Config config;
+  std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();   ///< construction time; anchors elapsedSeconds() (≈ start of the live run, as the controller is built just before engine.run).
   std::shared_ptr<ResultsType> baselineResults;   ///< Baseline the rollout compares against; starts as the greedy result, reseated to the winner's result whenever a non-greedy candidate is dispatched. Read (and advanced) by every rollout dispatcher via the back-pointer.
   ThreadPool threadPool;         ///< Shared pool the rollout dispatchers run their rollouts on (sized config.threads).
   DecisionCounter decisionCounter;   ///< counts rolled-out decisions on the main engine; consulted by cutoff() (subscribed only when config.cutoff != 0)

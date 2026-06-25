@@ -1,6 +1,8 @@
 #include "Results.h"
 #include <cmath>
 #include <stdexcept>
+#include <format>
+#include <algorithm>
 
 using namespace BPMNOS::Rollout;
 
@@ -43,6 +45,17 @@ void Results::add(const BPMNOS::Execution::SystemState* systemState) {
   // dominates, so repetitions == 1 (never early-stopped) incurs no extra per-rollout cost here.
   weightedObjectives.push_back((double)systemState->getWeightedObjective());
   totalWeightedObjective += weightedObjectives.back();
+}
+
+std::string Results::stringify() const {
+  std::string summary = std::format("{}", mean());
+  // Show the spread only when there is more than one rollout to span (a single rollout's min and max
+  // are just its mean, so the bracket would add nothing).
+  if ( weightedObjectives.size() > 1 ) {
+    auto [min, max] = std::ranges::minmax(weightedObjectives);
+    summary += std::format(" [{},{}]", min, max);
+  }
+  return summary;
 }
 
 double Results::mean() const {

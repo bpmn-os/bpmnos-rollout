@@ -15,6 +15,8 @@
 #include <stdexcept>
 #include <utility>
 #include <concepts>
+#include <string>
+#include <print>
 
 namespace BPMNOS::Rollout {
 
@@ -158,6 +160,15 @@ public:
     // leaves the committed trajectory — and thus the baseline — unchanged.
     if ( bestIndex != 0 ) {
       controller->baselineResults = std::move( results[bestIndex] );
+      // The results type owns what a baseline is and what (if anything) is worth reporting about an update,
+      // so the message is delegated to it. Compiled in only when the results type offers stringify(), and
+      // emitted only when verbose; for a results type without stringify() this is a no-op. dispatchEvent
+      // runs serially on the main engine, so writing to std::cout here is not racy.
+      if constexpr ( requires ( const ResultsType& r ) { { r.stringify() } -> std::convertible_to<std::string>; } ) {
+        if ( controller->config.verbose ) {
+          std::println("{:.1f}s: {}", controller->elapsedSeconds(), controller->baselineResults->stringify());
+        }
+      }
     }
     return decisions[bestIndex];
   }
