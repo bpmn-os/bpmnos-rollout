@@ -3,6 +3,7 @@
 #include <bpmn++.h>
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
+#include <nlohmann/json.hpp>
 #include "Rollout.h"
 #include "ThreadPool.h"
 #include <memory>
@@ -16,7 +17,8 @@
 #include <utility>
 #include <concepts>
 #include <string>
-#include <print>
+#include <iostream>
+#include <format>
 
 namespace BPMNOS::Rollout {
 
@@ -24,9 +26,11 @@ namespace BPMNOS::Rollout {
  * @brief Requirements on the rollout results policy type.
  *
  * A results type is default-constructible, records a rollout's final state via `add(const SystemState*)`,
- * and is comparable with `>` so the best candidate can be selected. It is held only by `shared_ptr` and
- * never copied, so it may carry arbitrarily heavy statistics. An optional `dominates(const ResultsType&)
- * const` lets a candidate's remaining repetitions be cancelled early once the baseline provably beats it.
+ * and is comparable with `>` so the best candidate can be selected. It reports itself two ways for baseline
+ * logging: `stringify()` yields a human-readable summary string, and `jsonify()` yields an
+ * `nlohmann::ordered_json` entry. It is held only by `shared_ptr` and never copied, so it may carry
+ * arbitrarily heavy statistics. An optional `dominates(const ResultsType&) const` lets a candidate's
+ * remaining repetitions be cancelled early once the baseline provably beats it.
  */
 template <typename T>
 concept ResultsPolicy =
@@ -34,6 +38,8 @@ concept ResultsPolicy =
   requires(T results, const T& a, const T& b, const BPMNOS::Execution::SystemState* state) {
     results.add(state);
     { a > b } -> std::convertible_to<bool>;
+    { a.stringify() } -> std::convertible_to<std::string>;
+    { a.jsonify() } -> std::convertible_to<nlohmann::ordered_json>;
   };
 
 // The dispatcher holds a back-pointer to its owning controller and reads config / thread pool / baseline /
@@ -160,14 +166,14 @@ public:
     // leaves the committed trajectory — and thus the baseline — unchanged.
     if ( bestIndex != 0 ) {
       controller->baselineResults = std::move( results[bestIndex] );
-      // The results type owns what a baseline is and what (if anything) is worth reporting about an update,
-      // so the message is delegated to it. Compiled in only when the results type offers stringify(), and
-      // emitted only when verbose; for a results type without stringify() this is a no-op. dispatchEvent
-      // runs serially on the main engine, so writing to std::cout here is not racy.
-      if constexpr ( requires ( const ResultsType& r ) { { r.stringify() } -> std::convertible_to<std::string>; } ) {
-        if ( controller->config.verbose ) {
-          std::println("{:.1f}\t{}", controller->elapsedSeconds(), controller->baselineResults->stringify());
-        }
+      // A baseline update is reported by injecting a "rollout" entry into the controller's logger when one is
+      // attached; otherwise a tab-separated progress line is printed. dispatchEvent runs serially on the main
+      // engine, so emitting here is not racy.
+      if ( controller->logger ) {
+        controller->logger->inject("rollout", nlohmann::ordered_json{ {"results", controller->baselineResults->jsonify()}, {"time", controller->elapsedSeconds()} });
+      }
+      else {
+        std::cout << std::format("{:.1f}\t{}\n", controller->elapsedSeconds(), controller->baselineResults->stringify());
       }
     }
     return decisions[bestIndex];

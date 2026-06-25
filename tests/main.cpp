@@ -6,6 +6,7 @@
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
 #include <iostream>
+#include <sstream>
 
 // Prints each test case's name and a green [pass] when it finishes, mirroring the engine's test runner.
 class ProgressListener : public Catch::EventListenerBase {
@@ -24,6 +25,34 @@ public:
 };
 
 CATCH_REGISTER_LISTENER(ProgressListener)
+
+// Silences the basic progress output the controller/dispatcher write to std::cout. For the duration of each
+// test case std::cout's buffer is swapped for an in-memory one; the capture is replayed only when the test
+// fails, so passing tests stay quiet while failures keep their full diagnostics (Catch's own failure output
+// goes through std::cout too). std::cerr — the progress lines above — is left untouched.
+class StdoutSuppressor : public Catch::EventListenerBase {
+public:
+    using Catch::EventListenerBase::EventListenerBase;
+
+    void testCaseStarting(Catch::TestCaseInfo const&) override {
+        saved = std::cout.rdbuf(capture.rdbuf());
+    }
+
+    void testCaseEnded(Catch::TestCaseStats const& stats) override {
+        std::cout.rdbuf(saved);
+        if (stats.totals.assertions.failed != 0) {
+            std::cout << capture.str();
+        }
+        capture.str("");
+        capture.clear();
+    }
+
+private:
+    std::ostringstream capture;
+    std::streambuf* saved = nullptr;
+};
+
+CATCH_REGISTER_LISTENER(StdoutSuppressor)
 
 using namespace BPMNOS;
 

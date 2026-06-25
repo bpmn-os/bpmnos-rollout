@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 #include <chrono>
+#include <iostream>
+#include <format>
 
 namespace BPMNOS::Rollout {
 
@@ -50,13 +52,13 @@ public:
     unsigned int cutoff = 0;      ///< max number of decisions made before switching to greedy (0 = unlimited)
     unsigned int threads = 1;     ///< number of threads used for rollouts (0 = all available hardware threads)
     bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice.
-    bool verbose = true;         ///< If true, report each baseline update (when the results type supports it).
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
-  RolloutController(BPMNOS::Execution::Evaluator* evaluator, std::shared_ptr<ResultsType> greedyResults, Config config = default_config())
+  RolloutController(BPMNOS::Execution::Evaluator* evaluator, std::shared_ptr<ResultsType> greedyResults, Config config = default_config(), std::unique_ptr<BPMNOS::Execution::Recorder> logger = nullptr)
     : config(config)
     , baselineResults(std::move(greedyResults))
+    , logger(logger ? std::move(logger) : nullptr)
     , threadPool(config.threads)
   {
     using namespace BPMNOS::Execution;
@@ -74,11 +76,15 @@ public:
       dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, this) );
     }
     dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
-    if constexpr ( requires ( const ResultsType& r ) { { r.stringify() } -> std::convertible_to<std::string>; } ) {
-      if ( config.verbose ) {
-        std::println("\nTime\tBestResults");
-        std::println("0.0\t{}", baselineResults->stringify());
-      }
+
+    // Report the initial baseline: inject a "rollout" entry into the logger when one was provided, otherwise
+    // print the tab-separated progress header and first row.
+    if ( this->logger ) {
+      this->logger->inject("rollout", nlohmann::ordered_json{ {"results", baselineResults->jsonify()}, {"time", 0.0} });
+    }
+    else {
+      std::cout << "\nTime\tBestResults\n";
+      std::cout << std::format("0.0\t{}\n", baselineResults->stringify());
     }
   }
 
@@ -134,6 +140,7 @@ private:
   Config config;
   std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();   ///< construction time; anchors elapsedSeconds() (≈ start of the live run, as the controller is built just before engine.run).
   std::shared_ptr<ResultsType> baselineResults;   ///< Baseline the rollout compares against; starts as the greedy result, reseated to the winner's result whenever a non-greedy candidate is dispatched. Read (and advanced) by every rollout dispatcher via the back-pointer.
+  std::unique_ptr<BPMNOS::Execution::Recorder> logger;   ///< Owned sink (built and subscribed by the caller, moved in via the constructor) for baseline entries; null = print plain progress lines. Used by the rollout dispatchers via the back-pointer.
   ThreadPool threadPool;         ///< Shared pool the rollout dispatchers run their rollouts on (sized config.threads).
   DecisionCounter decisionCounter;   ///< counts rolled-out decisions on the main engine; consulted by cutoff() (subscribed only when config.cutoff != 0)
   std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > dispatchers;   ///< Dispatched first-feasible in priority order.

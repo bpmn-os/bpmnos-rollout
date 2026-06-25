@@ -26,7 +26,6 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
 
   GIVEN( "Three bins and four items with stochastic sizes" ) {
     using Results = BPMNOS::Rollout::Results;
-    using Controller = BPMNOS::Rollout::RolloutController<Results>;
     constexpr unsigned int repetitions = 4;
 
     BPMNOS::Execution::GuidedEvaluator evaluator;
@@ -55,7 +54,7 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
       auto scenario = provider.createScenario();   // base seed 0; rollouts fork at 1..repetitions
       BPMNOS::Execution::Engine engine;
       BPMNOS::Execution::Recorder recorder;
-      Controller controller(&evaluator, greedyResults, { .repetitions = repetitions, .threads = 1, .verbose = false });
+      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .repetitions = repetitions, .threads = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);

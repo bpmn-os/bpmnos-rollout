@@ -3,6 +3,7 @@
 #include <bpmn++.h>
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
+#include <nlohmann/json.hpp>
 #include <vector>
 #include <array>
 #include <compare>
@@ -31,6 +32,9 @@ public:
 
   /// Human-readable summary: the mean, plus "[<min>,<max>]" when more than one rollout was recorded.
   std::string stringify() const;
+
+  /// Structured summary: {"mean": <expected value>, "objectives": [<each recorded weighted objective>]}.
+  nlohmann::ordered_json jsonify() const;
 
   /// Order by expected value: a better-expected result compares greater; equality means equal expected value.
   std::partial_ordering operator<=>(const Results& other) const;

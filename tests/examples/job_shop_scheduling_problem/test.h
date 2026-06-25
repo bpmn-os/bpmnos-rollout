@@ -43,7 +43,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
       auto scenario = provider.createScenario();
       BPMNOS::Execution::Engine engine;
       BPMNOS::Execution::Recorder recorder;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = 1, .verbose = false });
+      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -67,7 +67,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
         BPMNOS::Model::StaticDataProvider provider(model, csv);
         auto scenario = provider.createScenario();
         BPMNOS::Execution::Engine engine;
-        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = threads, .verbose = false });
+        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = threads });
         controller.connect(&engine);
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);

@@ -62,6 +62,19 @@ std::string Results::stringify() const {
   return summary;
 }
 
+nlohmann::ordered_json Results::jsonify() const {
+  if ( weightedObjectives.size() == 1 ) {
+    return { "objective", weightedObjectives.front() };
+  }
+  if ( weightedObjectives.size() > 1 ) {
+    return {
+      { "mean", mean() },
+      { "objectives", weightedObjectives }
+    };
+  }
+  return {};
+}
+
 double Results::mean() const {
   return totalWeightedObjective / (double)weightedObjectives.size();
 }

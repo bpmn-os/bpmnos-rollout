@@ -198,8 +198,17 @@ int main(int argc, char* argv[]) {
   auto scenario = dataProvider->createScenario();
   BPMNOS::Execution::Engine engine;
   auto cutoff = (unsigned int)std::ceil(args.cutoff * (double)maxDecisionCount);
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ args.candidates, args.repetitions, cutoff, args.threads, args.bisection, args.verbose };
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator.get(), greedyResults, config);
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ .candidates = args.candidates, .repetitions = args.repetitions, .cutoff = cutoff, .threads = args.threads, .bisection = args.bisection };
+  // Build and subscribe the verbose progress logger here (where the engine is available), then move ownership
+  // into the controller, which reports the initial baseline and every update through it (or prints a plain
+  // tab-separated table when no logger is given).
+  std::unique_ptr<BPMNOS::Execution::Recorder> logger;
+  if (args.verbose) {
+    logger = std::make_unique<BPMNOS::Execution::Recorder>(BPMNOS::Execution::Recorder::Config{ .stream = std::cerr, .colored = true });
+    logger->subscribe(&engine);
+  }
+
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator.get(), greedyResults, config, std::move(logger));
   controller.connect(&engine);
 
   BPMNOS::Execution::TimeWarp timeHandler;
