@@ -15,8 +15,8 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--bsiection] [--verbose]" << std::endl;
-  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-c] [-r] [-j] [-t] [-v]" << std::endl;
+  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates <number>] [--repetitions <number>] [--cutoff <number>] [--threads <number>] [--bisection] [--verbose]" << std::endl;
+  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-ca <number>] [-r <number>] [-cu <number>] [-j <number>] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
   std::cout << "\t-d, --data <data file>:               name of the CSV file containing the instance data" << std::endl;
@@ -24,10 +24,10 @@ void print_usage() {
   std::cout << "\t-p, --provider {static|expected|dynamic|stochastic} (default: stochastic)" << std::endl;
   std::cout << "\t-e, --evaluator {local|guided} (default: guided)" << std::endl;
   std::cout << "\t-f, --folder <folder1> <folder2> ...: folders in which lookup tables can be found" << std::endl;
-  std::cout << "\t-ca, --candidates:                     max candidate decisions assessed per step (0 = unlimited, default)" << std::endl;
-  std::cout << "\t-r, --repetitions:                    rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
-  std::cout << "\t-cu, --cutoff:                        max number of decisions made before switching to greedy (0 = unlimited, default)" << std::endl;
-  std::cout << "\t-j, --threads:                        number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
+  std::cout << "\t-ca, --candidates <number>:           max candidate decisions assessed per step (0 = unlimited, default)" << std::endl;
+  std::cout << "\t-r, --repetitions <number>:           rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
+  std::cout << "\t-cu, --cutoff <number>:               max number of decisions made before switching to greedy (0 = unlimited, default)" << std::endl;
+  std::cout << "\t-j, --threads <number>:               number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
   std::cout << "\t-b, --bisection:                      use bisection for choices" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
   exit(1);
