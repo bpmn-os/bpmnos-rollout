@@ -15,8 +15,8 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates] [--repetitions] [--threads] [--bsiection] [--verbose]" << std::endl;
-  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-c] [-r] [-j] [-t] [-v]" << std::endl;
+  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates <number>] [--repetitions <number>] [--cutoff <number>] [--lookahead <number>] [--threads <number>] [--bisection] [--verbose]" << std::endl;
+  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-ca <number>] [-r <number>] [-cu <number>][-l <number>] [-j <number>] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
   std::cout << "\t-d, --data <data file>:               name of the CSV file containing the instance data" << std::endl;
@@ -24,10 +24,11 @@ void print_usage() {
   std::cout << "\t-p, --provider {static|expected|dynamic|stochastic} (default: stochastic)" << std::endl;
   std::cout << "\t-e, --evaluator {local|guided} (default: guided)" << std::endl;
   std::cout << "\t-f, --folder <folder1> <folder2> ...: folders in which lookup tables can be found" << std::endl;
-  std::cout << "\t-ca, --candidates:                     max candidate decisions assessed per step (0 = unlimited, default)" << std::endl;
-  std::cout << "\t-r, --repetitions:                    rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
-  std::cout << "\t-cu, --cutoff:                        max number of decisions made before switching to greedy (0 = unlimited, default)" << std::endl;
-  std::cout << "\t-j, --threads:                        number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
+  std::cout << "\t-ca, --candidates <number>:           max candidate decisions assessed per step (0 = unlimited, default)" << std::endl;
+  std::cout << "\t-r, --repetitions <number>:           rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
+  std::cout << "\t-cu, --cutoff <number>:               max number of decisions made before switching to greedy (0 = unlimited, default)" << std::endl;
+  std::cout << "\t-l, --lookahead <number>:             lookahead depth (1 = one-step, default; 2 = two-step)" << std::endl;
+  std::cout << "\t-j, --threads <number>:               number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
   std::cout << "\t-b, --bisection:                      use bisection for choices" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
   exit(1);
@@ -46,6 +47,7 @@ struct Arguments {
   unsigned int candidates = 0;  // max candidate decisions to be rolled out (0 = unlimited)
   unsigned int repetitions = 1; // rollouts per candidate for stochastic scenarios
   double cutoff = 0.0;          // fraction of greedy baseline decisions to be actually rolled out (0.0 = unlimited)
+  unsigned int lookahead = 1;   // lookahead depth: 1 = one-step rollout (default), 2 = two-step rollout
   unsigned int threads = 1;     // number of parallel rollout threads
 };
 
@@ -84,6 +86,9 @@ Arguments parse_arguments(int argc, char* argv[]) {
     else if ((arg == "--cutoff" || arg == "-cu") && i + 1 < argc) {
       args.cutoff = static_cast<double>(std::stod(argv[++i]));
     }
+    else if ((arg == "--lookahead" || arg == "-l") && i + 1 < argc) {
+      args.lookahead = static_cast<unsigned int>(std::stoul(argv[++i]));
+    }
     else if ((arg == "--threads" || arg == "-j") && i + 1 < argc) {
       args.threads = static_cast<unsigned int>(std::stoul(argv[++i]));
     }
@@ -101,6 +106,11 @@ Arguments parse_arguments(int argc, char* argv[]) {
 
   if (args.modelFile.empty() || args.dataFile.empty()) {
     std::cerr << "Error: --model and --data are required.\n";
+    print_usage();
+  }
+
+  if (args.bisection && args.lookahead != 1) {
+    std::cerr << "Error: --bisection is only supported with --lookahead 1.\n";
     print_usage();
   }
 
@@ -198,7 +208,7 @@ int main(int argc, char* argv[]) {
   auto scenario = dataProvider->createScenario();
   BPMNOS::Execution::Engine engine;
   auto cutoff = (unsigned int)std::ceil(args.cutoff * (double)maxDecisionCount);
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ .candidates = args.candidates, .repetitions = args.repetitions, .cutoff = cutoff, .threads = args.threads, .bisection = args.bisection };
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ .candidates = args.candidates, .repetitions = args.repetitions, .cutoff = cutoff, .lookahead = args.lookahead, .threads = args.threads, .bisection = args.bisection };
   // Build and subscribe the verbose progress logger here (where the engine is available), then move ownership
   // into the controller, which reports the initial baseline and every update through it (or prints a plain
   // tab-separated table when no logger is given).

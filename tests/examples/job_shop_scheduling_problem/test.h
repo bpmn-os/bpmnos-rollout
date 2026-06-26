@@ -79,5 +79,61 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
         REQUIRE( run(1) == run(4) );
       }
     }
+
+    WHEN( "Two-step rollout runs with all candidates (lookahead = 2)" ) {
+      BPMNOS::Model::StaticDataProvider provider(model, csv);
+      auto scenario = provider.createScenario();
+      BPMNOS::Execution::Engine engine;
+      BPMNOS::Execution::Recorder recorder;
+      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .lookahead = 2, .threads = 1 });
+      controller.connect(&engine);
+      BPMNOS::Execution::TimeWarp timeHandler;
+      timeHandler.connect(&engine);
+      recorder.subscribe(&engine);
+      engine.run(scenario.get());
+      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+
+      THEN( "No process instance fails and all six complete" ) {
+        REQUIRE( recorder.find(nlohmann::json{{"state", "FAILED"}}).size() == 0 );
+        REQUIRE( recorder.find({{"state","COMPLETED"}}, nlohmann::json{{"nodeId",nullptr},{"event",nullptr},{"decision",nullptr}}).size() == 3 + 3 );
+      }
+      AND_THEN( "Two-step objective is at least as good as greedy (invariant 1, competing path)" ) {
+        REQUIRE( rolloutObj >= greedyObj );
+      }
+    }
+
+    WHEN( "Two-step rollout runs with candidates=1 (lookahead = 2)" ) {
+      BPMNOS::Model::StaticDataProvider provider(model, csv);
+      auto scenario = provider.createScenario();
+      BPMNOS::Execution::Engine engine;
+      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .candidates = 1, .lookahead = 2 });
+      controller.connect(&engine);
+      BPMNOS::Execution::TimeWarp timeHandler;
+      timeHandler.connect(&engine);
+      engine.run(scenario.get());
+      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+
+      THEN( "Two-step objective equals greedy (invariant 2: only the greedy front is assessed)" ) {
+        REQUIRE( rolloutObj == greedyObj );
+      }
+    }
+
+    WHEN( "Two-step rollout runs with threads=1 and threads=4 (lookahead = 2)" ) {
+      auto run = [&](unsigned int threads) {
+        BPMNOS::Model::StaticDataProvider provider(model, csv);
+        auto scenario = provider.createScenario();
+        BPMNOS::Execution::Engine engine;
+        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .lookahead = 2, .threads = threads });
+        controller.connect(&engine);
+        BPMNOS::Execution::TimeWarp timeHandler;
+        timeHandler.connect(&engine);
+        engine.run(scenario.get());
+        return (double)engine.getSystemState()->getWeightedObjective();
+      };
+
+      THEN( "Two-step objective is the same regardless of thread count (invariant 3)" ) {
+        REQUIRE( run(1) == run(4) );
+      }
+    }
   }
 }

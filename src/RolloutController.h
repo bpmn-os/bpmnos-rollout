@@ -6,6 +6,7 @@
 #include "Results.h"
 #include "ThreadPool.h"
 #include "RolloutDispatcher.h"
+#include "TwoStepRolloutDispatcher.h"
 #include "DecisionCounter.h"
 #include <memory>
 #include <utility>
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <iostream>
 #include <format>
+#include <stdexcept>
 
 namespace BPMNOS::Rollout {
 
@@ -50,8 +52,9 @@ public:
     unsigned int candidates = 0;  ///< max candidate decisions to be rolled out (0 = unlimited)
     unsigned int repetitions = 1; ///< rollouts per candidate for stochastic scenarios (averaged)
     unsigned int cutoff = 0;      ///< max number of decisions made before switching to greedy (0 = unlimited)
+    unsigned int lookahead = 1;   ///< lookahead depth: 1 = one-step rollout (default), 2 = two-step rollout (deeper not supported).
     unsigned int threads = 1;     ///< number of threads used for rollouts (0 = all available hardware threads)
-    bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice.
+    bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice (one-step lookahead only).
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
@@ -69,13 +72,26 @@ public:
     dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleExit>>(evaluator) );
     dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
     dispatchers.push_back( std::make_unique<InstantDirectMessage>() );
-    if ( config.bisection ) {
-      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, this) );
+    if ( config.lookahead == 1 ) {
+      if ( config.bisection ) {
+        dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, this) );
+      }
+      else {
+        dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, this) );
+      }
+      dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
+    }
+    else if ( config.lookahead == 2 ) {
+      // Two-step lookahead: a single dispatcher handles both contested kinds (choice and competing), branching
+      // the first contested decision and the next one reached before falling back to the greedy policy.
+      if ( config.bisection ) {
+        throw std::invalid_argument("RolloutController: bisection is only supported with lookahead == 1");
+      }
+      dispatchers.push_back( std::make_unique<TwoStepRolloutDispatcher<ResultsType>>(evaluator, this) );
     }
     else {
-      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, this) );
+      throw std::invalid_argument("RolloutController: lookahead must be 1 or 2");
     }
-    dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
 
     // Report the initial baseline: inject a "rollout" entry into the logger when one was provided, otherwise
     // print the tab-separated progress header and first row.
@@ -136,6 +152,8 @@ private:
   // baselineResults, and cutoff() through it.
   template <BPMNOS::Execution::CandidateCollection C, ResultsPolicy R>
   friend class RolloutDispatcher;
+  template <ResultsPolicy R>
+  friend class TwoStepRolloutDispatcher;
 
   Config config;
   std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();   ///< construction time; anchors elapsedSeconds() (≈ start of the live run, as the controller is built just before engine.run).

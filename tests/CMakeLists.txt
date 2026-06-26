@@ -19,11 +19,14 @@ add_executable(run_tests EXCLUDE_FROM_ALL
   main.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/Results.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/Rollout.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/TwoStepCandidates.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/TwoStepAdvance.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/ThreadPool.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/DecisionCounter.cpp
 )
 
-target_compile_options(run_tests PRIVATE -O0 -g -ggdb3)
+target_compile_options(run_tests PRIVATE -O0 -g -ggdb3 -fsanitize=address,undefined,leak -fno-omit-frame-pointer)
+target_link_options(run_tests PRIVATE -fsanitize=address,undefined,leak)
 
 target_link_libraries(run_tests
   PRIVATE

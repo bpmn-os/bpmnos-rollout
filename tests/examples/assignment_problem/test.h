@@ -90,5 +90,65 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
         REQUIRE( run(1) == run(4) );
       }
     }
+
+    WHEN( "Two-step rollout runs with all candidates (lookahead = 2)" ) {
+      BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
+      auto scenario = provider.createScenario();
+      BPMNOS::Execution::Engine engine;
+      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .lookahead = 2, .threads = 1 });
+      controller.connect(&engine);
+      BPMNOS::Execution::TimeWarp timeHandler;
+      timeHandler.connect(&engine);
+      engine.run(scenario.get());
+      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+
+      THEN( "Two-step strictly beats greedy and finds the optimum (invariant 1)" ) {
+        REQUIRE( rolloutObj == -10.0 );
+        REQUIRE( rolloutObj > greedyObj );
+      }
+    }
+
+    WHEN( "Two-step rollout runs with candidates=1 (lookahead = 2)" ) {
+      BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
+      auto scenario = provider.createScenario();
+      BPMNOS::Execution::Engine engine;
+      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .candidates = 1, .lookahead = 2 });
+      controller.connect(&engine);
+      BPMNOS::Execution::TimeWarp timeHandler;
+      timeHandler.connect(&engine);
+      engine.run(scenario.get());
+      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+
+      THEN( "Two-step objective equals greedy (invariant 2: only the greedy front is assessed)" ) {
+        REQUIRE( rolloutObj == greedyObj );
+      }
+    }
+
+    WHEN( "Two-step rollout runs with threads=1 and threads=4 (lookahead = 2)" ) {
+      auto run = [&](unsigned int threads) {
+        BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
+        auto scenario = provider.createScenario();
+        BPMNOS::Execution::Engine engine;
+        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .lookahead = 2, .threads = threads });
+        controller.connect(&engine);
+        BPMNOS::Execution::TimeWarp timeHandler;
+        timeHandler.connect(&engine);
+        engine.run(scenario.get());
+        return (double)engine.getSystemState()->getWeightedObjective();
+      };
+
+      THEN( "Two-step objective is the same regardless of thread count (invariant 3)" ) {
+        REQUIRE( run(1) == run(4) );
+      }
+    }
+
+    WHEN( "An unsupported configuration is requested" ) {
+      THEN( "lookahead other than 1 or 2 throws" ) {
+        REQUIRE_THROWS_AS( (BPMNOS::Rollout::RolloutController<Results>(&evaluator, greedyResults, { .lookahead = 3 })), std::invalid_argument );
+      }
+      AND_THEN( "bisection combined with two-step throws" ) {
+        REQUIRE_THROWS_AS( (BPMNOS::Rollout::RolloutController<Results>(&evaluator, greedyResults, { .lookahead = 2, .bisection = true })), std::invalid_argument );
+      }
+    }
   }
 }

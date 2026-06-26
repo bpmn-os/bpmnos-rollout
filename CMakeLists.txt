@@ -53,6 +53,8 @@ add_executable(bpmnos-rollout
   src/main.cpp
   src/Results.cpp
   src/Rollout.cpp
+  src/TwoStepCandidates.cpp
+  src/TwoStepAdvance.cpp
   src/ThreadPool.cpp
   src/DecisionCounter.cpp
 )
