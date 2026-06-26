@@ -6,6 +6,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstddef>
+#include <random>
 #include <bpmn++.h>
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
@@ -15,13 +16,14 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates <number>] [--repetitions <number>] [--cutoff <number>] [--threads <number>] [--bisection] [--verbose]" << std::endl;
-  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-e <evaluator>] [-f <path1> <path2> ...] [-ca <number>] [-r <number>] [-cu <number>] [-j <number>] [-v]" << std::endl;
+  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--seed <number>] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates <number>] [--repetitions <number>] [--cutoff <number>] [--threads <number>] [--bisection] [--verbose]" << std::endl;
+  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-s <number>] [-e <evaluator>] [-f <folder1> <folder2> ...] [-ca <number>] [-r <number>] [-cu <number>] [-j <number>] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
   std::cout << "\t-d, --data <data file>:               name of the CSV file containing the instance data" << std::endl;
   std::cout << "\t-j, --json <json file>:               name of the file for the JSON output" << std::endl;
   std::cout << "\t-p, --provider {static|expected|dynamic|stochastic} (default: stochastic)" << std::endl;
+  std::cout << "\t-s, --seed <number>                   seed for stochastic scenarios (default: random)" << std::endl;
   std::cout << "\t-e, --evaluator {local|guided} (default: guided)" << std::endl;
   std::cout << "\t-f, --folder <folder1> <folder2> ...: folders in which lookup tables can be found" << std::endl;
   std::cout << "\t-ca, --candidates <number>:           max candidate decisions assessed per step (0 = unlimited, default)" << std::endl;
@@ -39,6 +41,7 @@ struct Arguments {
   std::string dataFile;
   std::string jsonFile;
   std::string providerName = "stochastic";
+  unsigned int seed = std::random_device{}();
   std::string evaluatorName = "guided";
   std::vector<std::string> folders;
   bool bisection = false;
@@ -125,7 +128,7 @@ int main(int argc, char* argv[]) {
       return std::make_unique<BPMNOS::Model::DynamicDataProvider>(args.modelFile,args.folders,args.dataFile);
     }
     else if (args.providerName == "stochastic") {
-      return std::make_unique<BPMNOS::Model::StochasticDataProvider>(args.modelFile,args.folders,args.dataFile);
+      return std::make_unique<BPMNOS::Model::StochasticDataProvider>(args.modelFile,args.folders,args.dataFile,args.seed);
     }
     else {
       std::cerr << "Error: unknown data provider.\n";
@@ -150,6 +153,9 @@ int main(int argc, char* argv[]) {
 
 
   auto dataProvider = createDataProvider();
+  if (args.providerName == "stochastic") {
+    std::cout << "Seed: " << args.seed  << std::endl;
+  }
   auto evaluator = createEvaluator();
 
   // Greedy baseline: run the greedy controller once per repetition (common random numbers via the
