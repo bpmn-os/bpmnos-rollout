@@ -48,7 +48,8 @@ const BPMNOS::Model::Scenario* Rollout::forkScenario(const BPMNOS::Execution::Sy
 
 std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ) {
   // The token is unambiguously identified by its instance identifier and node, both stable across the copy.
-  const Token* originalToken = original->token;
+  auto originalToken = original->token.lock();
+  assert( originalToken );
   auto instanceId = originalToken->getInstanceId();
   const BPMN::FlowNode* node = originalToken->node;
   auto* systemState = engine.getSystemState();   // the copy installed by initializeSystemState
@@ -71,23 +72,24 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
     }
     assert( found->node == originalToken->node && "Rollout: cloned token has a different node than the original" );
     assert( found->status == originalToken->status && "Rollout: cloned token status differs from the original (deep copy not faithful)" );
+    assert( found->decisionRequest && "Rollout: pending token has no decision request" );
     return found;
   };
 
   // Create the equivalent decision for the copied token, carrying the same data.
   if ( dynamic_cast<BPMNOS::Execution::EntryDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingEntryDecisions) ) {
-      return std::make_shared<EntryDecision>(token, evaluator);
+      return std::make_shared<EntryDecision>(token->decisionRequest.get(), evaluator);
     }
   }
   else if ( dynamic_cast<BPMNOS::Execution::ExitDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingExitDecisions) ) {
-      return std::make_shared<ExitDecision>(token, evaluator);
+      return std::make_shared<ExitDecision>(token->decisionRequest.get(), evaluator);
     }
   }
   else if ( auto* choice = dynamic_cast<BPMNOS::Execution::ChoiceDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingChoiceDecisions) ) {
-      return std::make_shared<ChoiceDecision>(token, choice->choices, evaluator);
+      return std::make_shared<ChoiceDecision>(token->decisionRequest.get(), choice->choices, evaluator);
     }
   }
   else if ( auto* messageDelivery = dynamic_cast<BPMNOS::Execution::MessageDeliveryDecision*>(original.get()) ) {
@@ -113,7 +115,7 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
       if ( !match ) {
         throw std::logic_error("Rollout: cannot find message with origin '" + origin->id + "' sent from '" + BPMNOS::to_string(sender.value(), STRING) + "'");
       }
-      return std::make_shared<MessageDeliveryDecision>(token, match, evaluator);
+      return std::make_shared<MessageDeliveryDecision>(token->decisionRequest.get(), match, evaluator);
     }
   }
   throw std::logic_error("Rollout: unexpected error");

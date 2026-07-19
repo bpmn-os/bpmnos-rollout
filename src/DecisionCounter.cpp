@@ -1,4 +1,5 @@
 #include "DecisionCounter.h"
+#include <cassert>
 
 using namespace BPMNOS::Rollout;
 using namespace BPMNOS::Execution;
@@ -21,7 +22,9 @@ void DecisionCounter::notice(const Observable* observable) {
 bool DecisionCounter::isCounted(const Decision* decision) {
   if ( dynamic_cast<const EntryDecision*>(decision) ) {
     // only entries into the children of a sequential ad-hoc subprocess are rolled out
-    auto node = decision->token->node;
+    auto token = decision->token.lock();
+    assert( token );
+    auto node = token->node;
     return node->parent && node->parent->represents<BPMNOS::Model::SequentialAdHocSubProcess>();
   }
   if ( dynamic_cast<const ExitDecision*>(decision) ) {
@@ -37,7 +40,8 @@ bool DecisionCounter::isCounted(const Decision* decision) {
     }
     // Direct (explicitly addressed) deliveries are dispatched greedily by InstantDirectMessage; the rest are
     // rolled out. Direct test replicated from InstantDirectMessage on the recipient token.
-    auto token = decision->token;
+    auto token = decision->token.lock();
+    assert( token );
     auto extensionElements = token->node->extensionElements->as<BPMNOS::Model::ExtensionElements>();
     auto messageDefinition = extensionElements->getMessageDefinition(token->status);
     auto recipientHeader = messageDefinition->getRecipientHeader(token->getAttributeRegistry(), token->status, *token->data, token->globals);
