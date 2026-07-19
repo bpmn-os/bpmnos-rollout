@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.26.4)
 
 project(bpmnos-rollout)
 
+# Whether to build optimized (-O3) or with -O0 + sanitizers. Defaults ON so a plain
+# `-DCMAKE_BUILD_TYPE=Release` build (see the benchmark's Solvers.toml) takes the optimized branch
+# below instead of falling into the sanitizer/-O0 else-branch. (Mirrors the greedy solver.)
+# Note: this only toggles optimization/sanitizer flags; asserts are disabled by CMAKE_BUILD_TYPE=Release
+# (which defines the NDEBUG preprocessor macro), not by this option.
+option(NDEBUG "Whether compilation uses optimization" ON)
+
 # Set the C++ standard
 set(CMAKE_CXX_STANDARD 23)
 
