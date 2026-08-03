@@ -21,7 +21,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
   GIVEN( "Three machines and three orders" ) {
     using Results = BPMNOS::Rollout::Results;
 
-    BPMNOS::Execution::GuidedEvaluator evaluator;
+    auto evaluator = std::make_shared<BPMNOS::Execution::GuidedEvaluator>();
 
     auto greedyResults = std::make_shared<Results>();
     double greedyObj;
@@ -29,7 +29,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
       BPMNOS::Model::StaticDataProvider provider(model, csv);
       auto scenario = provider.createScenario(1);
       BPMNOS::Execution::Engine engine;
-      BPMNOS::Execution::GreedyController controller(&evaluator);
+      BPMNOS::Execution::GreedyController controller(evaluator);
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -43,7 +43,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
       auto scenario = provider.createScenario();
       BPMNOS::Execution::Engine engine;
       BPMNOS::Execution::Recorder recorder;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = 1 });
+      BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -67,7 +67,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
         BPMNOS::Model::StaticDataProvider provider(model, csv);
         auto scenario = provider.createScenario();
         BPMNOS::Execution::Engine engine;
-        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = threads });
+        BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = threads });
         controller.connect(&engine);
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);

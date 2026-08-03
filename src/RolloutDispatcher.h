@@ -63,9 +63,9 @@ class RolloutController;
 template <BPMNOS::Execution::CandidateCollection Candidates, ResultsPolicy ResultsType>
 class RolloutDispatcher : public BPMNOS::Execution::EventDispatcher {
 public:
-  RolloutDispatcher( BPMNOS::Execution::Evaluator* evaluator, RolloutController<ResultsType>* controller )
+  RolloutDispatcher( std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator, RolloutController<ResultsType>* controller )
     : candidates(evaluator)
-    , evaluator(evaluator)
+    , evaluator(std::move(evaluator))
     , controller(controller)
   {
     if ( controller->config.repetitions == 0 ) {
@@ -186,7 +186,7 @@ public:
 
 protected:
   Candidates candidates;            ///< the reward-ordered candidate collection rolled out
-  BPMNOS::Execution::Evaluator* evaluator;  ///< passed to the candidate source and to each Rollout
+  std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator;  ///< shared with the candidate source and with each Rollout
   RolloutController<ResultsType>* controller;   ///< owning controller; source of config (candidates/repetitions), threadPool, baselineResults, and the cut-off decision
   std::vector<ThreadPool::QueueId> queues;   ///< one queue per candidate, grown lazily and reused across dispatches
   std::mutex copyMutex;             ///< serializes each rollout's deep copy of the shared source state (the engine is not internally synchronized; the copy reads lazily-pruning containers that mutate on read)

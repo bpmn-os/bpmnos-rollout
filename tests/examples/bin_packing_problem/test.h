@@ -28,7 +28,7 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
     using Results = BPMNOS::Rollout::Results;
     constexpr unsigned int repetitions = 4;
 
-    BPMNOS::Execution::GuidedEvaluator evaluator;
+    auto evaluator = std::make_shared<BPMNOS::Execution::GuidedEvaluator>();
 
     // Greedy baseline: run greedy once per repetition at seeds 1..repetitions (common random numbers with
     // the rollouts, which fork at getSeed()+index+1), so the baseline carries `repetitions` samples — the
@@ -39,7 +39,7 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
       for ( unsigned int scenarioId = 1; scenarioId <= repetitions; ++scenarioId ) {
         auto scenario = provider.createScenario(scenarioId);
         BPMNOS::Execution::Engine engine;
-        BPMNOS::Execution::GreedyController controller(&evaluator);
+        BPMNOS::Execution::GreedyController controller(evaluator);
         controller.connect(&engine);
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);
@@ -54,7 +54,7 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
       auto scenario = provider.createScenario();   // base seed 0; rollouts fork at 1..repetitions
       BPMNOS::Execution::Engine engine;
       BPMNOS::Execution::Recorder recorder;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .repetitions = repetitions, .threads = 1 });
+      BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .repetitions = repetitions, .threads = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);

@@ -140,12 +140,12 @@ int main(int argc, char* argv[]) {
     return nullptr;
   };
 
-  auto createEvaluator = [&args]() -> std::unique_ptr<BPMNOS::Execution::Evaluator> {
+  auto createEvaluator = [&args]() -> std::shared_ptr<BPMNOS::Execution::Evaluator> {
     if (args.evaluatorName == "local") {
-      return std::make_unique<BPMNOS::Execution::LocalEvaluator>();
+      return std::make_shared<BPMNOS::Execution::LocalEvaluator>();
     }
     else if (args.evaluatorName == "guided") {
-      return std::make_unique<BPMNOS::Execution::GuidedEvaluator>();
+      return std::make_shared<BPMNOS::Execution::GuidedEvaluator>();
     }
     else {
       std::cerr << "Error: unknown evaluator.\n";
@@ -184,7 +184,7 @@ int main(int argc, char* argv[]) {
 
         BPMNOS::Rollout::DecisionCounter greedyDecisionCounter;   // declared before the engine so it outlives it
         BPMNOS::Execution::Engine greedyEngine;
-        BPMNOS::Execution::GreedyController greedyController(evaluator.get());
+        BPMNOS::Execution::GreedyController greedyController(evaluator);
         greedyController.connect(&greedyEngine);
         greedyDecisionCounter.connect(&greedyEngine);   // count the baseline's rolled-out decisions for the cutoff
         BPMNOS::Execution::TimeWarp greedyTimeHandler;
@@ -217,7 +217,7 @@ int main(int argc, char* argv[]) {
     logger->subscribe(&engine);
   }
 
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator.get(), greedyResults, config, std::move(logger));
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator, greedyResults, config, std::move(logger));
   controller.connect(&engine);
 
   BPMNOS::Execution::TimeWarp timeHandler;

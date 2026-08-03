@@ -22,7 +22,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
   GIVEN( "Three clients and three servers" ) {
     using Results = BPMNOS::Rollout::Results;
 
-    BPMNOS::Execution::LocalEvaluator evaluator;
+    auto evaluator = std::make_shared<BPMNOS::Execution::LocalEvaluator>();
 
     auto greedyResults = std::make_shared<Results>();
     double greedyObj;
@@ -30,7 +30,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
       BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
       auto scenario = provider.createScenario(1);
       BPMNOS::Execution::Engine engine;
-      BPMNOS::Execution::GreedyController controller(&evaluator);
+      BPMNOS::Execution::GreedyController controller(evaluator);
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -43,7 +43,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
       BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
       auto scenario = provider.createScenario();
       BPMNOS::Execution::Engine engine;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = 1 });
+      BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -61,7 +61,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
       BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
       auto scenario = provider.createScenario();
       BPMNOS::Execution::Engine engine;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .candidates = 1 });
+      BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .candidates = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -78,7 +78,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
         BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
         auto scenario = provider.createScenario();
         BPMNOS::Execution::Engine engine;
-        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = threads });
+        BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = threads });
         controller.connect(&engine);
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);

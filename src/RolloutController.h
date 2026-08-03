@@ -55,7 +55,7 @@ public:
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
-  RolloutController(BPMNOS::Execution::Evaluator* evaluator, std::shared_ptr<ResultsType> greedyResults, Config config = default_config(), std::unique_ptr<BPMNOS::Execution::Recorder> logger = nullptr)
+  RolloutController(std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator, std::shared_ptr<ResultsType> greedyResults, Config config = default_config(), std::unique_ptr<BPMNOS::Execution::Recorder> logger = nullptr)
     : config(config)
     , baselineResults(std::move(greedyResults))
     , logger(std::move(logger))

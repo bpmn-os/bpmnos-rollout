@@ -19,7 +19,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
     using Results = BPMNOS::Rollout::Results;
     using Config  = BPMNOS::Rollout::RolloutController<Results>::Config;
 
-    BPMNOS::Execution::LocalEvaluator evaluator;
+    auto evaluator = std::make_shared<BPMNOS::Execution::LocalEvaluator>();
 
     // Greedy baseline (seed+1 per CRN convention); keeps results alive for all WHEN blocks.
     auto greedyResults = std::make_shared<Results>();
@@ -28,7 +28,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
       BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
       auto scenario = provider.createScenario(1);
       BPMNOS::Execution::Engine engine;
-      BPMNOS::Execution::GreedyController controller(&evaluator);
+      BPMNOS::Execution::GreedyController controller(evaluator);
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -41,7 +41,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
       BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
       auto scenario = provider.createScenario();
       BPMNOS::Execution::Engine engine;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = 1 });
+      BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -60,7 +60,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
       auto scenario = provider.createScenario();
       BPMNOS::Execution::Engine engine;
       BPMNOS::Execution::Recorder recorder;
-      BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .candidates = 1 });
+      BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .candidates = 1 });
       controller.connect(&engine);
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
@@ -85,7 +85,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
         BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
         auto scenario = provider.createScenario();
         BPMNOS::Execution::Engine engine;
-        BPMNOS::Rollout::RolloutController<Results> controller(&evaluator, greedyResults, { .threads = threads } );
+        BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = threads } );
         controller.connect(&engine);
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);

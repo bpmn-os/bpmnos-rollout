@@ -7,10 +7,10 @@ using namespace BPMNOS::Model;
 
 namespace BPMNOS::Rollout {
 
-Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, Evaluator* evaluator, unsigned int index, std::mutex& copyMutex )
+Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, unsigned int index, std::mutex& copyMutex )
   : scenario(forkScenario(foreignState, index))
   , greedyController(evaluator)
-  , evaluator(evaluator)
+  , evaluator(std::move(evaluator))
 {
   // Connect the sub-engine's greedy policy before installing the state, so its cached candidate sources are
   // subscribed when initializeSystemState announces the state and can rebuild from its pending decisions.
@@ -79,17 +79,17 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
   // Create the equivalent decision for the copied token, carrying the same data.
   if ( dynamic_cast<BPMNOS::Execution::EntryDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingEntryDecisions) ) {
-      return std::make_shared<EntryDecision>(token->decisionRequest.get(), evaluator);
+      return std::make_shared<EntryDecision>(token->decisionRequest.get(), evaluator.get());
     }
   }
   else if ( dynamic_cast<BPMNOS::Execution::ExitDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingExitDecisions) ) {
-      return std::make_shared<ExitDecision>(token->decisionRequest.get(), evaluator);
+      return std::make_shared<ExitDecision>(token->decisionRequest.get(), evaluator.get());
     }
   }
   else if ( auto* choice = dynamic_cast<BPMNOS::Execution::ChoiceDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingChoiceDecisions) ) {
-      return std::make_shared<ChoiceDecision>(token->decisionRequest.get(), choice->choices, evaluator);
+      return std::make_shared<ChoiceDecision>(token->decisionRequest.get(), choice->choices, evaluator.get());
     }
   }
   else if ( auto* messageDelivery = dynamic_cast<BPMNOS::Execution::MessageDeliveryDecision*>(original.get()) ) {
@@ -115,7 +115,7 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
       if ( !match ) {
         throw std::logic_error("Rollout: cannot find message with origin '" + origin->id + "' sent from '" + BPMNOS::to_string(sender.value(), STRING) + "'");
       }
-      return std::make_shared<MessageDeliveryDecision>(token->decisionRequest.get(), match, evaluator);
+      return std::make_shared<MessageDeliveryDecision>(token->decisionRequest.get(), match, evaluator.get());
     }
   }
   throw std::logic_error("Rollout: unexpected error");
