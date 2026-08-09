@@ -189,7 +189,8 @@ int main(int argc, char* argv[]) {
         greedyDecisionCounter.connect(&greedyEngine);   // count the baseline's rolled-out decisions for the cutoff
         BPMNOS::Execution::TimeWarp greedyTimeHandler;
         greedyTimeHandler.connect(&greedyEngine);
-        greedyEngine.run(greedyScenario.get());
+        // a run beginning before its first instance only ticks through empty instants
+        greedyEngine.run(greedyScenario.get(), greedyScenario->getEarliestInstantiationTime());
 
         // The final system state is valid while greedyEngine is alive (here); add it under the lock.
         std::lock_guard greedyResultsLock(greedyResultsMutex);
@@ -238,7 +239,8 @@ int main(int argc, char* argv[]) {
   BPMNOS::Execution::OutcomeSentinel sentinel;
   sentinel.subscribe(&engine);
 
-  engine.run(scenario.get());
+  // a run beginning before its first instance only ticks through empty instants
+  engine.run(scenario.get(), scenario->getEarliestInstantiationTime());
   logger.reset();
   std::cout << "Status: " << BPMNOS::Execution::outcome[(size_t)sentinel.getOutcome()] << std::endl;
 
