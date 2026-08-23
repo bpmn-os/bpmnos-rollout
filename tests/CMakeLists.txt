@@ -1,9 +1,7 @@
-# Rollout test suite (Catch2). Mirrors the engine's tests/ setup: a `run_tests` executable that is
-# EXCLUDE_FROM_ALL and a `tests` custom target that runs it from the project root.
+# Rollout test suite (Catch2). A `run_tests` executable that is EXCLUDE_FROM_ALL and a `tests` custom target
+# that runs it from the project root, mirroring the engine.
 #
-# The fetched engine's own tests are disabled (BPMNOS_TESTS OFF in the top-level CMakeLists), so Catch2 is
-# fetched here. The rollout's own sources (Results/Rollout/ThreadPool) are compiled into the test binary; the
-# engine is consumed through its generated single headers, exactly like the application.
+# Catch2 is fetched here rather than taken from the engine, whose tests a consumer does not build.
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
@@ -23,25 +21,21 @@ add_executable(run_tests EXCLUDE_FROM_ALL
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/DecisionCounter.cpp
 )
 
-target_compile_options(run_tests PRIVATE -O0 -g -ggdb3)
+rollout_compile_options(run_tests)
+
+target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_link_libraries(run_tests
   PRIVATE
-  bpmnos-execution
-  bpmnos-model
-  bpmn++
+  bpmnos::execution
+  bpmnos::model
   pthread
-  xerces-c
   Catch2::Catch2WithMain
 )
 
-# The engine generates its single headers (bpmnos-model.h / bpmnos-execution.h) via custom ALL targets;
-# make sure they run before our sources compile.
-add_dependencies(run_tests model_header execution_header)
-
 set_target_properties(run_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 
-# Run from the rollout project root so the model/data paths in each test.h resolve relative to it.
+# Run from the rollout project root so the model and data paths in each test.h resolve relative to it.
 file(WRITE "${CMAKE_BINARY_DIR}/run_tests" "#!/bin/bash\n(cd ${PROJECT_SOURCE_DIR};${CMAKE_BINARY_DIR}/tests/run_tests $@)")
 execute_process(COMMAND chmod +x "${CMAKE_BINARY_DIR}/run_tests")
 message("-- Run rollout tests: ./run_tests [tags]")

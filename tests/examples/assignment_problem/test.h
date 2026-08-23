@@ -35,7 +35,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
       engine.run(scenario.get());
-      greedyObj = (double)engine.getSystemState()->getWeightedObjective();
+      greedyObj = (double)engine.getSystemState()->getObjective();
       greedyResults->add(engine.getSystemState());
     }
 
@@ -48,7 +48,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
       engine.run(scenario.get());
-      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+      double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "Rollout strictly beats greedy: greedy trap cost 26 vs optimum 10 (invariant 1)" ) {
         REQUIRE( greedyObj == -26.0 );    // greedy trap: C1→S1=1, C3→S3=5, C2→S2=20
@@ -66,7 +66,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
       engine.run(scenario.get());
-      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+      double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "Rollout objective equals greedy (invariant 2: only the greedy front is assessed)" ) {
         REQUIRE( rolloutObj == greedyObj );
@@ -83,7 +83,7 @@ SCENARIO( "Assignment problem - rollout invariants", "[examples][assignment_prob
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);
         engine.run(scenario.get());
-        return (double)engine.getSystemState()->getWeightedObjective();
+        return (double)engine.getSystemState()->getObjective();
       };
 
       THEN( "Objective is the same regardless of thread count (invariant 3)" ) {

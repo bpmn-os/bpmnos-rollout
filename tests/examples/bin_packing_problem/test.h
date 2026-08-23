@@ -61,7 +61,7 @@ SCENARIO( "Bin packing problem (stochastic) - rollout invariants", "[examples][b
       recorder.subscribe(&engine);
       engine.run(scenario.get());
       auto failures = recorder.find(nlohmann::json{{"state","FAILED"}}).size();
-      return std::make_pair((double)engine.getSystemState()->getWeightedObjective(), failures);
+      return std::make_pair((double)engine.getSystemState()->getObjective(), failures);
     };
 
     WHEN( "RolloutController runs on the stochastic scenario (repetitions > 1)" ) {

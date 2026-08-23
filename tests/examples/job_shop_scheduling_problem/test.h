@@ -34,7 +34,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
       engine.run(scenario.get());
-      greedyObj = (double)engine.getSystemState()->getWeightedObjective();
+      greedyObj = (double)engine.getSystemState()->getObjective();
       greedyResults->add(engine.getSystemState());
     }
 
@@ -49,7 +49,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
       timeHandler.connect(&engine);
       recorder.subscribe(&engine);
       engine.run(scenario.get());
-      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+      double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "No process instance fails" ) {
         REQUIRE( recorder.find(nlohmann::json{{"state", "FAILED"}}).size() == 0 );
@@ -72,7 +72,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);
         engine.run(scenario.get());
-        return (double)engine.getSystemState()->getWeightedObjective();
+        return (double)engine.getSystemState()->getObjective();
       };
 
       THEN( "Objective is the same regardless of thread count (invariant 3)" ) {

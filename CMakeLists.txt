@@ -1,61 +1,79 @@
 cmake_minimum_required(VERSION 3.26.4)
 
-project(bpmnos-rollout)
+project(bpmnos-rollout VERSION 0.1.0 LANGUAGES CXX)
 
-# Whether to build optimized (-O3) or with -O0 + sanitizers. Defaults ON so a plain
-# `-DCMAKE_BUILD_TYPE=Release` build (see the benchmark's Solvers.toml) takes the optimized branch
-# below instead of falling into the sanitizer/-O0 else-branch. (Mirrors the greedy solver.)
-# Note: this only toggles optimization/sanitizer flags; asserts are disabled by CMAKE_BUILD_TYPE=Release
-# (which defines the NDEBUG preprocessor macro), not by this option.
-option(NDEBUG "Whether compilation uses optimization" ON)
-
-# Set the C++ standard
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Set the output directory for the binary
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
-
-# Use ccache (when installed) to cache compilation across rebuilds. Set before
-# the FetchContent calls so it also covers the fetched engine.
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  message("-- Using ccache: ${CCACHE_PROGRAM}")
-  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-  set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-else()
-  message("-- ccache not found; compilation will not be cached")
+# Only when rollout is built on its own, so that a consumer's choice always wins.
+if (PROJECT_IS_TOP_LEVEL)
+  if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  endif()
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 endif()
+
+# Sanitizing follows the build type, and is an option of its own rather than a side effect of turning
+# optimisation off, which is what the former NDEBUG option made of it.
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(ROLLOUT_SANITIZE_DEFAULT ON)
+else()
+  set(ROLLOUT_SANITIZE_DEFAULT OFF)
+endif()
+option(ROLLOUT_SANITIZE "Build with the address, undefined and leak sanitizers" ${ROLLOUT_SANITIZE_DEFAULT})
+
+option(ROLLOUT_TESTS "Build rollout tests" ${PROJECT_IS_TOP_LEVEL})
+
+# Build output goes to the build tree rather than into the checkout.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 
-# BPMN-OS engine, consumed through its generated single headers
-# (bpmnos-model.h / bpmnos-execution.h in _deps/bpmnos-src/lib). The engine's
-# own tests are not needed here.
-set(BPMNOS_TESTS OFF CACHE BOOL "Disable bpmnos tests")
+# The engine is the only dependency rollout declares. Its headers, those of the header-only libraries the
+# amalgamated headers include, and bpmn++ with Xerces all arrive as usage requirements of the exported
+# targets, so none of them is named here.
+set(BPMNOS_VERSION 0.1.0)
+# Names the engine's branch while its change is unmerged. It becomes v${BPMNOS_VERSION} once tagged.
+set(BPMNOS_REF "dependency-management")
 
-FetchContent_Declare(
-        bpmnos
-        GIT_REPOSITORY https://github.com/bpmn-os/bpmnos-engine.git
-        GIT_TAG main
+# bpmnos-greedy is the baseline every rollout result is compared against, so it is built alongside
+# bpmnos-rollout. An engine resolved from a prefix brings its own, already built.
+set(BPMNOS_APP ON CACHE BOOL "Build bpmnos-greedy alongside bpmnos-rollout" FORCE)
+
+FetchContent_Declare(bpmnos
+  GIT_REPOSITORY https://github.com/bpmn-os/bpmnos-engine.git
+  GIT_TAG        ${BPMNOS_REF}
+  FIND_PACKAGE_ARGS ${BPMNOS_VERSION}
 )
-
 FetchContent_MakeAvailable(bpmnos)
 
-include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
-  SYSTEM
-  ${CMAKE_BINARY_DIR}/_deps/bpmnos-src/lib
-  ${CMAKE_BINARY_DIR}/_deps/cnl-src/include/
-  ${CMAKE_BINARY_DIR}/_deps/json-src/
-  ${CMAKE_BINARY_DIR}/_deps/strutil-src/
-  ${CMAKE_BINARY_DIR}/_deps/limex-src/
+set(ROLLOUT_COMPILE_OPTIONS
+  -Werror
+  -pedantic-errors
+  -Wpedantic
+  -Wall
+  -Wextra
+  -Wconversion
+  -Wsign-conversion
+  -Wshadow=local
+  -Wno-misleading-indentation
+  -Wno-error=unused-parameter
+  -Wno-error=unused-variable
 )
 
-# Test suite (Catch2). The `run_tests` target is EXCLUDE_FROM_ALL; build/run it via the `tests` target.
-add_subdirectory(tests)
+if (ROLLOUT_SANITIZE)
+  list(APPEND ROLLOUT_COMPILE_OPTIONS -fsanitize=address,undefined,leak -fno-omit-frame-pointer -ggdb3)
+  set(ROLLOUT_LINK_OPTIONS -fsanitize=address,undefined,leak)
+endif()
 
-# Standalone application
+function(rollout_compile_options target)
+  target_compile_options(${target} PRIVATE ${ROLLOUT_COMPILE_OPTIONS})
+  if (ROLLOUT_LINK_OPTIONS)
+    target_link_options(${target} PRIVATE ${ROLLOUT_LINK_OPTIONS})
+  endif()
+endfunction()
+
 add_executable(bpmnos-rollout
   src/main.cpp
   src/Results.cpp
@@ -64,67 +82,20 @@ add_executable(bpmnos-rollout
   src/DecisionCounter.cpp
 )
 
-target_compile_options(bpmnos-rollout PRIVATE -O2)
+rollout_compile_options(bpmnos-rollout)
 
-# The engine generates its single headers (bpmnos-model.h / bpmnos-execution.h)
-# via custom ALL targets; make sure they run before our sources compile.
-add_dependencies(bpmnos-rollout model_header execution_header)
+target_include_directories(bpmnos-rollout PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_link_libraries(bpmnos-rollout
   PRIVATE
-  bpmnos-execution
-  bpmnos-model
-  bpmn++
+  bpmnos::execution
+  bpmnos::model
   pthread
-  xerces-c
 )
 
-if (NDEBUG)
-  target_compile_options(${PROJECT_NAME}
-    PRIVATE
-    -O3
-    -Werror
-    -pedantic-errors
-    -Wpedantic
-    -Wall
-    -Wshadow=local
-    -Wextra
-    -Wconversion
-    -Wsign-conversion
-    -fmax-errors=1 # Remove
-    -Wno-error=unused-parameter # Remove
-    -Wno-error=unused-variable # Remove
-    -Wno-misleading-indentation
-)
-else()
-  target_compile_options(${PROJECT_NAME}
-    PRIVATE
-    -O0
-    -Werror
-    -pedantic-errors
-    -Wpedantic
-    -Wall
-    -Wshadow=local
-    -Wextra
-    -Wconversion
-    -Wsign-conversion
-    -fsanitize=address,undefined,leak
-    -fno-omit-frame-pointer
-    -g
-    -ggdb3
-    -pg # Profiling
-    -fmax-errors=1 # Remove
-    -Wno-error=unused-parameter # Remove
-    -Wno-error=unused-variable # Remove
-    -Wno-misleading-indentation
-  )
-
-  add_link_options(-fsanitize=address,undefined,leak)
-
-  target_link_options(${PROJECT_NAME}
-    PRIVATE
-    -fsanitize=address,undefined,leak
-    -pg # Profiling
-  )
+if (ROLLOUT_TESTS)
+  add_subdirectory(tests)
 endif()
 
+include(GNUInstallDirs)
+install(TARGETS bpmnos-rollout RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

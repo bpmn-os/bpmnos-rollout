@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
   auto evaluator = createEvaluator();
 
   // Greedy baseline: run the greedy controller once per repetition (common random numbers via the
-  // scenario id) and collect each final system state's weighted objective as the baseline the rollout is
+  // scenario id) and collect each final system state's objective as the baseline the rollout is
   // compared against. The repetitions run in parallel on the thread pool (one queue).
   auto greedyResults = std::make_shared<BPMNOS::Rollout::Results>();
   // For the cutoff: count the rolled-out decisions of each greedy baseline run and keep the maximum.
@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
   logger.reset();
   std::cout << "Status: " << BPMNOS::Execution::outcome[(size_t)sentinel.getOutcome()] << std::endl;
 
-  auto objective = (float)engine.getSystemState()->getWeightedObjective();
+  auto objective = (float)engine.getSystemState()->getObjective();
   std::cout << "Objective (maximization): " << objective << std::endl;
   std::cout << "Objective (minimization): " << -objective  << std::endl;
 

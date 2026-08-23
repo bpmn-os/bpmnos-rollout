@@ -17,7 +17,6 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
     // Greedy nearest-neighbour: Hamburg→Berlin(296)→Cologne(573)→Munich(575)→Hamburg(778) = 2222.
     // Optimal tour: Hamburg→Berlin(296)→Munich(585)→Cologne(575)→Hamburg(432) = 1888.
     using Results = BPMNOS::Rollout::Results;
-    using Config  = BPMNOS::Rollout::RolloutController<Results>::Config;
 
     auto evaluator = std::make_shared<BPMNOS::Execution::LocalEvaluator>();
 
@@ -33,7 +32,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
       engine.run(scenario.get());
-      greedyObj = (double)engine.getSystemState()->getWeightedObjective();
+      greedyObj = (double)engine.getSystemState()->getObjective();
       greedyResults->add(engine.getSystemState());
     }
 
@@ -46,7 +45,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
       BPMNOS::Execution::TimeWarp timeHandler;
       timeHandler.connect(&engine);
       engine.run(scenario.get());
-      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+      double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "Rollout objective is at least as good as greedy (invariant 1)" ) {
         REQUIRE( greedyObj  == -2222 );
@@ -66,7 +65,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
       timeHandler.connect(&engine);
       recorder.subscribe(&engine);
       engine.run(scenario.get());
-      double rolloutObj = (double)engine.getSystemState()->getWeightedObjective();
+      double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "Rollout objective equals greedy (invariant 2: only the greedy front is assessed)" ) {
         REQUIRE( rolloutObj == greedyObj );
@@ -90,7 +89,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
         BPMNOS::Execution::TimeWarp timeHandler;
         timeHandler.connect(&engine);
         engine.run(scenario.get());
-        return (double)engine.getSystemState()->getWeightedObjective();
+        return (double)engine.getSystemState()->getObjective();
       };
 
       THEN( "Objective is the same regardless of thread count (invariant 3)" ) {

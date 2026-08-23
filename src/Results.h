@@ -15,7 +15,7 @@ namespace BPMNOS::Rollout {
 /**
  * @brief Outcomes of repeated rollouts of a single decision candidate.
  *
- * Records the weighted objective of each rollout; the expected value is their mean. Results are ordered
+ * Records the objective of each rollout; the expected value is their mean. Results are ordered
  * by expected value (higher is better), so the best candidate compares greatest and can be selected with
  * `std::max_element`. A Results with no recorded rollout has the lowest possible expected value, so it
  * never compares best.
@@ -27,13 +27,13 @@ namespace BPMNOS::Rollout {
  */
 class Results {
 public:
-  std::vector<double> weightedObjectives; ///< Weighted objective of each recorded rollout.
+  std::vector<double> objectives; ///< Objective of each recorded rollout.
   void add(const BPMNOS::Execution::SystemState* systemState);
 
   /// Human-readable summary: the mean, plus "[<min>,<max>]" when more than one rollout was recorded.
   std::string stringify() const;
 
-  /// Structured summary: {"mean": <expected value>, "objectives": [<each recorded weighted objective>]}.
+  /// Structured summary: {"mean": <expected value>, "objectives": [<each recorded objective>]}.
   nlohmann::ordered_json jsonify() const;
 
   /// Order by expected value: a better-expected result compares greater; equality means equal expected value.
@@ -68,7 +68,7 @@ private:
   double lowerPredictionBound() const;  ///< incumbent role: mu - t(1-a,k-1)*s*sqrt(1+1/k); throws for k < 2
   double meanUpperBound() const;        ///< candidate role: mu + t(1-a,n-1)*s/sqrt(n); throws for n < 2
 
-  double totalWeightedObjective = 0.0;
+  double totalObjective = 0.0;
 };
 
 } // namespace BPMNOS::Rollout

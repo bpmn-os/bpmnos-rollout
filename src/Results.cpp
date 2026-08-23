@@ -43,48 +43,48 @@ double Results::SignificanceLevel::critical(std::size_t degreesOfFreedom) const 
 void Results::add(const BPMNOS::Execution::SystemState* systemState) {
   // Lightweight: only what selection always needs. Early-stopping statistics are derived lazily in
   // dominates, so repetitions == 1 (never early-stopped) incurs no extra per-rollout cost here.
-  weightedObjectives.push_back((double)systemState->getWeightedObjective());
-  totalWeightedObjective += weightedObjectives.back();
+  objectives.push_back((double)systemState->getObjective());
+  totalObjective += objectives.back();
 }
 
 std::string Results::stringify() const {
-  if ( weightedObjectives.empty() ) {
+  if ( objectives.empty() ) {
     return std::string("n/a");
   }
   
   std::string summary = std::format("{}", mean());
   // Show the spread only when there is more than one rollout to span (a single rollout's min and max
   // are just its mean, so the bracket would add nothing).
-  if ( weightedObjectives.size() > 1 ) {
-    auto [min, max] = std::ranges::minmax(weightedObjectives);
+  if ( objectives.size() > 1 ) {
+    auto [min, max] = std::ranges::minmax(objectives);
     summary += std::format("\t[{},{}]", min, max);
   }
   return summary;
 }
 
 nlohmann::ordered_json Results::jsonify() const {
-  if ( weightedObjectives.size() == 1 ) {
-    return { "objective", weightedObjectives.front() };
+  if ( objectives.size() == 1 ) {
+    return { "objective", objectives.front() };
   }
-  if ( weightedObjectives.size() > 1 ) {
+  if ( objectives.size() > 1 ) {
     return {
       { "mean", mean() },
-      { "objectives", weightedObjectives }
+      { "objectives", objectives }
     };
   }
   return {};
 }
 
 double Results::mean() const {
-  return totalWeightedObjective / (double)weightedObjectives.size();
+  return totalObjective / (double)objectives.size();
 }
 
 double Results::standardDeviation() const {
-  std::size_t n = weightedObjectives.size();
+  std::size_t n = objectives.size();
   if ( n < 2 ) throw std::logic_error("Results::standardDeviation requires at least two rollouts");
   double m = mean();
   double sumSquaredDeviations = 0.0;
-  for ( double objective : weightedObjectives ) {
+  for ( double objective : objectives ) {
     double deviation = objective - m;
     sumSquaredDeviations += deviation * deviation;
   }
@@ -92,7 +92,7 @@ double Results::standardDeviation() const {
 }
 
 double Results::lowerPredictionBound() const {
-  std::size_t k = weightedObjectives.size();
+  std::size_t k = objectives.size();
   // The incumbent must be fully sampled; with fewer than two rollouts the bound is undefined,
   // and silently disabling it would let catastrophic candidates pass unnoticed.
   if ( k < 2 ) throw std::logic_error("Results::lowerPredictionBound: incumbent needs at least two rollouts");
@@ -100,7 +100,7 @@ double Results::lowerPredictionBound() const {
 }
 
 double Results::meanUpperBound() const {
-  std::size_t n = weightedObjectives.size();
+  std::size_t n = objectives.size();
   if ( n < 2 ) throw std::logic_error("Results::meanUpperBound requires at least two rollouts");
   return mean() + level_n.critical(n - 1) * standardDeviation() / std::sqrt((double)n);
 }
@@ -108,13 +108,13 @@ double Results::meanUpperBound() const {
 bool Results::dominates(const Results& other) const {
   // Only invoked with repetitions > 1, right after the candidate records a rollout. The candidate must
   // have that run to assess; an empty candidate is a contract violation, not a state to silently skip.
-  if ( other.weightedObjectives.empty() ) throw std::logic_error("Results::dominates: candidate has no rollout to assess");
+  if ( other.objectives.empty() ) throw std::logic_error("Results::dominates: candidate has no rollout to assess");
 
   // Results are dominated if the performance of the last rollout is significnatly worse than the baseline.
-  if ( other.weightedObjectives.back() < lowerPredictionBound() ) return true;
+  if ( other.objectives.back() < lowerPredictionBound() ) return true;
 
   // Other results are dominated if they are worse on averaged than the baseline.
-  if ( other.weightedObjectives.size() >= 2 && other.meanUpperBound() < mean() ) return true;
+  if ( other.objectives.size() >= 2 && other.meanUpperBound() < mean() ) return true;
 
   return false;
 }
@@ -122,8 +122,8 @@ bool Results::dominates(const Results& other) const {
 std::partial_ordering Results::operator<=>(const Results& other) const {
   // An empty result (no rollout recorded) compares lowest, so it is never selected as best;
   // two empty results are equivalent.
-  bool noResults = weightedObjectives.empty();
-  bool noOtherResults = other.weightedObjectives.empty();
+  bool noResults = objectives.empty();
+  bool noOtherResults = other.objectives.empty();
   if ( noResults || noOtherResults ) {
     return ( noResults == noOtherResults ) ? std::partial_ordering::equivalent
          : noResults                       ? std::partial_ordering::less
@@ -134,8 +134,8 @@ std::partial_ordering Results::operator<=>(const Results& other) const {
 
 bool Results::operator==(const Results& other) const {
   // Two empty results are equal; an empty and a non-empty are not.
-  if ( weightedObjectives.empty() || other.weightedObjectives.empty() ) {
-    return weightedObjectives.empty() == other.weightedObjectives.empty();
+  if ( objectives.empty() || other.objectives.empty() ) {
+    return objectives.empty() == other.objectives.empty();
   }
   return mean() == other.mean();
 }

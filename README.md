@@ -11,3 +11,65 @@ To limit the computational effort, the following parameters can be provided:
 - `cutoff`: limits how many decisions are rolled out before the controller falls back to the greedy algorithm for the remainder of the run. It is given as a fraction of the number of decisions made in the greedy baseline run (e.g. `0.5` rolls out the first half of the decisions and takes the rest greedily). If set to zero (default), all decisions are rolled out.
 - `threads`: the number of threads to be used for parallel rollouts (default: 1). If set to zero, all available hardware threads are used.
 - `bisection`: if set, a choice is assessed by bisection instead of by enumerating all of its alternatives (default). Bisection is useful for a choice over a bounded numeric value.
+
+## Requirements
+
+A C++23 compiler, GCC 15.2 or Clang 18.1.3 or later, CMake 3.26.4 or later, and git.
+
+The BPMN-OS engine is the only dependency and is fetched automatically unless an installed copy satisfies
+the version requirement. Everything the engine itself needs, bpmn++ and Xerces-C++ among it, arrives with
+it.
+
+## Build
+
+This project has two preset configurations that are created in folders `build/release` and `build/debug`.
+Presets are configured the first time they are needed or when running `make configure`.
+
+| Preset | Folder | Compiled with | Used for |
+| --- | --- | --- | --- |
+| `release` | `build/release` | `-O3 -DNDEBUG`, assertions off | building, installing |
+| `debug` | `build/debug` | unoptimised, assertions live, address/undefined/leak sanitizers | development, tests |
+
+You can build `bpmnos-rollout` by
+
+```sh
+make # (release)
+```
+or
+```sh
+make dev # (debug)
+```
+with the preset indicated in parentheses. The executable is written to `build/release/bin/bpmnos-rollout`.
+
+`bpmnos-greedy` provides the baseline each rollout is compared against and is built alongside, at
+`build/release/_deps/bpmnos-build/bin/bpmnos-greedy`. An engine resolved from a prefix instead of built
+here brings its own, already installed.
+
+## Tests
+
+To (build and) run the test suite, use
+```sh
+make tests # (debug)
+```
+
+Once the tests are built (and run) with `make tests`, you can use `./build/debug/run_tests
+"[selected_tag]"` to run selected tests carrying the given Catch2 tag. The wrapper enters the project
+folder first, the models and data being named by paths relative to it.
+
+## Installation
+
+To install, run
+```sh
+make # (release)
+sudo make install
+```
+to copy `bin/bpmnos-rollout` into `/usr/local`, or
+
+```sh
+cmake --install build/release --prefix <target>
+```
+to install it into the `<target>` folder.
+
+When the engine had to be built here, because no installed copy satisfied the requirement, it is installed
+alongside `bpmnos-rollout`: the two libraries, the headers they include, and `bpmnos-greedy`. An engine
+resolved from a prefix is already installed and is not installed again.
