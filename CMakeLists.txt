@@ -34,8 +34,7 @@ set(FETCHCONTENT_QUIET FALSE)
 # amalgamated headers include, and bpmn++ with Xerces all arrive as usage requirements of the exported
 # targets, so none of them is named here.
 set(BPMNOS_VERSION 0.1.0)
-# Names the engine's branch while its change is unmerged. It becomes v${BPMNOS_VERSION} once tagged.
-set(BPMNOS_REF "dependency-management")
+set(BPMNOS_REF "v${BPMNOS_VERSION}")
 
 # bpmnos-greedy is the baseline every rollout result is compared against, so it is built alongside
 # bpmnos-rollout. An engine resolved from a prefix brings its own, already built.
