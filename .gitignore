@@ -1,0 +1,6 @@
+# Build directory (CMake output, fetched deps, etc.)
+/build/
+
+# Compiled binaries (build output)
+/bin/
+build
