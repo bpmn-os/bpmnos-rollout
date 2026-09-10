@@ -8,7 +8,7 @@ using namespace BPMNOS::Model;
 namespace BPMNOS::Rollout {
 
 Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, unsigned int index, std::mutex& copyMutex )
-  : scenario(forkScenario(foreignState, index))
+  : scenario(cloneScenario(foreignState, index))
   , greedyController(evaluator)
   , evaluator(std::move(evaluator))
 {
@@ -19,7 +19,7 @@ Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const Syste
 
   // Install a copy of the current state under copyMutex: the deep copy reads the shared foreign state's
   // lazily-pruning containers, which erase expired entries on read, so concurrent rollouts of one dispatch
-  // must not copy at the same time. The forked scenario above is a read-only copy, hence outside the lock;
+  // must not copy at the same time. The scenario copy above is read-only, hence outside the lock;
   // cloneDecision and the simulation below run on this rollout's private copy, also outside the lock.
   {
     std::lock_guard<std::mutex> lock(copyMutex);
@@ -29,20 +29,18 @@ Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const Syste
   engine.resume(decision);
 }
 
-const BPMNOS::Model::Scenario* Rollout::forkScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index) {
-  if ( auto* stochasticScenario = dynamic_cast<const StochasticScenario*>(systemState->scenario) ) {
-    // Fork at spawnTime so future values resample independently; offset the seed by the repetition index
-    // so the same index yields the same resampled future across candidates (common random numbers). The
-    // +1 keeps every rollout off the base seed (index 0), which is the future the live run will realize —
-    // rolling out on it would let the candidate peek at the actual outcome.
-    unsigned int seed = stochasticScenario->getSeed() + index + 1;
-    forkedScenario = std::make_unique<StochasticScenario>( const_cast<StochasticScenario*>(stochasticScenario), systemState->getTime() + 1, seed );
-    return forkedScenario.get();
-  }
-  // Deterministic scenarios are cloned so each sub-engine gets its own per-run memoization maps
-  // (taskCompletionStatus / activityArrivalStatus); sharing one scenario would race under parallel rollouts.
-  forkedScenario = systemState->scenario->clone();
-  return forkedScenario.get();
+const BPMNOS::Model::Scenario* Rollout::cloneScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index) {
+  // Every sub-engine runs on its own copy, because a scenario carries per-run memoization maps
+  // (taskCompletionStatus / activityArrivalStatus) that concurrent rollouts of one dispatch would race on
+  // and that alternative continuations would overwrite for one another.
+  //
+  // The copy begins to differ at the next instant, and the index selects which realization it gets. A
+  // scenario with a single realization ignores both, so every candidate is compared against one world. A
+  // scenario with many returns its index-th realization, so the same index yields the same realization
+  // across candidates (common random numbers) and no copy reproduces the future the live run will realize;
+  // which seeds those indices correspond to is the scenario's own business, not this class's.
+  clonedScenario = systemState->scenario->clone( systemState->getTime() + 1, index );
+  return clonedScenario.get();
 }
 
 

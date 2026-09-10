@@ -33,17 +33,24 @@ set(FETCHCONTENT_QUIET FALSE)
 # The engine is the only dependency rollout declares. Its headers, those of the header-only libraries the
 # amalgamated headers include, and bpmn++ with Xerces all arrive as usage requirements of the exported
 # targets, so none of them is named here.
-set(BPMNOS_VERSION 0.1.0)
-set(BPMNOS_REF "v${BPMNOS_VERSION}")
+#
+# The engine is pinned by commit rather than by release tag, because its interfaces are still changing and
+# a tag would promise a stability that is not yet being offered. Move this pin deliberately, together with
+# whatever change in rollout the new revision requires.
+#
+# No FIND_PACKAGE_ARGS accompanies the pin. It would let an installed engine satisfying the version
+# requirement be used in place of the fetch, and since the declared version does not change with every
+# interface change, an installed engine could shadow the pinned revision and silently supply a different
+# interface. Rollout therefore always builds against the revision named here.
+set(BPMNOS_REF 68617802cf05524ad7c0b4e1549af0792932683b)
 
 # bpmnos-greedy is the baseline every rollout result is compared against, so it is built alongside
-# bpmnos-rollout. An engine resolved from a prefix brings its own, already built.
+# bpmnos-rollout.
 set(BPMNOS_APP ON CACHE BOOL "Build bpmnos-greedy alongside bpmnos-rollout" FORCE)
 
 FetchContent_Declare(bpmnos
   GIT_REPOSITORY https://github.com/bpmn-os/bpmnos-engine.git
   GIT_TAG        ${BPMNOS_REF}
-  FIND_PACKAGE_ARGS ${BPMNOS_VERSION}
 )
 FetchContent_MakeAvailable(bpmnos)
 
