@@ -43,7 +43,7 @@ bool DecisionCounter::isCounted(const Decision* decision) {
     auto token = decision->token.lock();
     assert( token );
     auto extensionElements = token->node->extensionElements->as<BPMNOS::Model::ExtensionElements>();
-    auto messageDefinition = extensionElements->getMessageDefinition(token->status);
+    auto messageDefinition = extensionElements->getMessageDefinition();
     auto recipientHeader = messageDefinition->getRecipientHeader(token->getAttributeRegistry(), token->status, *token->data, token->globals);
     bool direct = message->recipient.has_value() || recipientHeader[BPMNOS::Model::MessageDefinition::Index::Sender].has_value();
     return !direct;
