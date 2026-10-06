@@ -8,41 +8,32 @@ using namespace BPMNOS::Model;
 namespace BPMNOS::Rollout {
 
 Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, unsigned int index, std::mutex& copyMutex )
-  : scenario(cloneScenario(foreignState, index))
+  : engine(foreignState->scenario->dataProvider->getModel())
   , greedyController(evaluator)
   , evaluator(std::move(evaluator))
 {
   // Connect the sub-engine's greedy policy before installing the state, so its cached candidate sources are
   // subscribed when initializeSystemState announces the state and can rebuild from its pending decisions.
   greedyController.connect(&engine);
-  timeHandler.connect(&engine);
+
+  // Every rollout runs on its own fork of the scenario, which agrees with the live run up to its current
+  // time and is the index-th realization thereafter. The same index yields the same realization across
+  // candidates (common random numbers), and no fork reproduces the future the live run will realize. A
+  // data provider whose future is certain forks a run by a new scenario, which cannot differ from the run.
+  // Forking only reads the scenario of the live run, hence outside the lock.
+  auto scenario = foreignState->scenario->dataProvider->forkScenario(*foreignState->scenario, index);
 
   // Install a copy of the current state under copyMutex: the deep copy reads the shared foreign state's
   // lazily-pruning containers, which erase expired entries on read, so concurrent rollouts of one dispatch
-  // must not copy at the same time. The scenario copy above is read-only, hence outside the lock;
-  // cloneDecision and the simulation below run on this rollout's private copy, also outside the lock.
+  // must not copy at the same time. cloneDecision and the simulation below run on this rollout's private
+  // copy, outside the lock.
   {
     std::lock_guard<std::mutex> lock(copyMutex);
-    engine.initializeSystemState(scenario, foreignState);
+    engine.initializeSystemState(std::move(scenario), foreignState);
   }
   decision = cloneDecision(selectedDecision);
   engine.resume(decision);
 }
-
-const BPMNOS::Model::Scenario* Rollout::cloneScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index) {
-  // Every sub-engine runs on its own copy, because a scenario carries per-run memoization maps
-  // (taskCompletionStatus / activityArrivalStatus) that concurrent rollouts of one dispatch would race on
-  // and that alternative continuations would overwrite for one another.
-  //
-  // The copy begins to differ at the next instant, and the index selects which realization it gets. A
-  // scenario with a single realization ignores both, so every candidate is compared against one world. A
-  // scenario with many returns its index-th realization, so the same index yields the same realization
-  // across candidates (common random numbers) and no copy reproduces the future the live run will realize;
-  // which seeds those indices correspond to is the scenario's own business, not this class's.
-  clonedScenario = systemState->scenario->clone( systemState->getTime() + 1, index );
-  return clonedScenario.get();
-}
-
 
 std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ) {
   // The token is unambiguously identified by its instance identifier and node, both stable across the copy.

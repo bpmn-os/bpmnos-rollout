@@ -12,9 +12,8 @@ namespace BPMNOS::Rollout {
  * @brief Performs a one-step lookahead rollout of a single selected decision.
  *
  * Assumes a selected decision from the current state and simulates forward with the greedy policy to termination,
- * exposing the resulting final system state. The rollout runs in a private sub-engine on its own copy of
- * the scenario,
- * into which the current system state is copied. Independent of the candidate source and the results type, so
+ * exposing the resulting final system state. The rollout runs in a private sub-engine on its own fork of
+ * the scenario, into which the current system state is copied. Independent of the candidate source and the results type, so
  * it is a plain (non-template) class compiled once. The returned state is valid only while this Rollout is
  * alive: the caller reads it and folds it into its results before the Rollout is destroyed, which frees
  * the underlying sub-engine.
@@ -30,14 +29,10 @@ public:
   const BPMNOS::Execution::SystemState* getSystemState() const;
 
 private:
-  std::unique_ptr<BPMNOS::Model::Scenario> clonedScenario;       ///< owns this rollout's copy of the scenario; declared first so it outlives the engine
-  const BPMNOS::Model::Scenario* scenario;                       ///< scenario the rollout runs on, being the copy owned above
   BPMNOS::Execution::Engine engine;                             ///< sub-engine the rollout runs in
   BPMNOS::Execution::GreedyController greedyController;         ///< greedy base policy simulated in the sub-engine
-  BPMNOS::Execution::TimeWarp timeHandler;                     ///< clock handler for the sub-engine
   std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator;  ///< shared with the greedy policy simulated here, and with whoever else evaluates through it
   std::shared_ptr<BPMNOS::Execution::Decision> decision;       ///< the selected decision translated onto the copied state
-  const BPMNOS::Model::Scenario* cloneScenario(const BPMNOS::Execution::SystemState* systemState, unsigned int index); ///< take this rollout's copy of the scenario, being its index-th realization (owned by clonedScenario), and return its pointer
   std::shared_ptr<BPMNOS::Execution::Decision> cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ); ///< translate the selected decision onto the engine's copied state
 };
 

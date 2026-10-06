@@ -2,7 +2,7 @@
 #include "Results.h"
 
 SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_shop_scheduling_problem]" ) {
-  const std::string model = "tests/examples/job_shop_scheduling_problem/Job_shop_scheduling_problem.bpmn";
+  const std::string modelFile = "tests/examples/job_shop_scheduling_problem/Job_shop_scheduling_problem.bpmn";
   const std::string csv =
     "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
     "Machine1; MachineProcess; jobs := 2\n"
@@ -16,7 +16,7 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
     "Order3; OrderProcess; durations := [4,3]\n"
   ;
 
-  REQUIRE_NOTHROW( BPMNOS::Model::Model(model) );
+  auto model = std::make_shared<const BPMNOS::Model::Model>(modelFile);
 
   GIVEN( "Three machines and three orders" ) {
     using Results = BPMNOS::Rollout::Results;
@@ -26,29 +26,25 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
     auto greedyResults = std::make_shared<Results>();
     double greedyObj;
     {
-      BPMNOS::Model::StaticDataProvider provider(model, csv);
-      auto scenario = provider.createScenario(1);
-      BPMNOS::Execution::Engine engine;
+      auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+      auto scenario = provider->createScenario(1);
+      BPMNOS::Execution::Engine engine(model);
       BPMNOS::Execution::GreedyController controller(evaluator);
       controller.connect(&engine);
-      BPMNOS::Execution::TimeWarp timeHandler;
-      timeHandler.connect(&engine);
-      engine.run(scenario.get());
+      engine.run(std::move(scenario));
       greedyObj = (double)engine.getSystemState()->getObjective();
       greedyResults->add(engine.getSystemState());
     }
 
     WHEN( "RolloutController runs with all candidates (default config)" ) {
-      BPMNOS::Model::StaticDataProvider provider(model, csv);
-      auto scenario = provider.createScenario();
-      BPMNOS::Execution::Engine engine;
+      auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+      auto scenario = provider->createScenario();
+      BPMNOS::Execution::Engine engine(model);
       BPMNOS::Execution::Recorder recorder;
       BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = 1 });
       controller.connect(&engine);
-      BPMNOS::Execution::TimeWarp timeHandler;
-      timeHandler.connect(&engine);
       recorder.subscribe(&engine);
-      engine.run(scenario.get());
+      engine.run(std::move(scenario));
       double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "No process instance fails" ) {
@@ -64,14 +60,12 @@ SCENARIO( "Job shop scheduling problem - rollout invariants", "[examples][job_sh
 
     WHEN( "RolloutController runs with threads=1 and threads=4" ) {
       auto run = [&](unsigned int threads) {
-        BPMNOS::Model::StaticDataProvider provider(model, csv);
-        auto scenario = provider.createScenario();
-        BPMNOS::Execution::Engine engine;
+        auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+        auto scenario = provider->createScenario();
+        BPMNOS::Execution::Engine engine(model);
         BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = threads });
         controller.connect(&engine);
-        BPMNOS::Execution::TimeWarp timeHandler;
-        timeHandler.connect(&engine);
-        engine.run(scenario.get());
+        engine.run(std::move(scenario));
         return (double)engine.getSystemState()->getObjective();
       };
 

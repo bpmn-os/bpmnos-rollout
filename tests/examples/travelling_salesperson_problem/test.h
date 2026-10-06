@@ -2,7 +2,7 @@
 #include "Results.h"
 
 SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][travelling_salesperson_problem]" ) {
-  const std::string model = "tests/examples/travelling_salesperson_problem/Travelling_salesperson_problem.bpmn";
+  const std::string modelFile = "tests/examples/travelling_salesperson_problem/Travelling_salesperson_problem.bpmn";
   const std::vector<std::string> folders = { "tests/examples/travelling_salesperson_problem" };
   const std::string csv =
     "INSTANCE_ID; NODE_ID; INITIALIZATION\n"
@@ -11,7 +11,7 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
     "Instance1; TravellingSalesperson_Process; locations := [\"Munich\",\"Berlin\",\"Cologne\"]\n"
   ;
 
-  REQUIRE_NOTHROW( BPMNOS::Model::Model(model, folders) );
+  auto model = std::make_shared<const BPMNOS::Model::Model>(modelFile, folders);
 
   GIVEN( "A static TSP: Hamburg origin, three cities (Munich/Berlin/Cologne)" ) {
     // Greedy nearest-neighbour: Hamburg→Berlin(296)→Cologne(573)→Munich(575)→Hamburg(778) = 2222.
@@ -24,27 +24,23 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
     auto greedyResults = std::make_shared<Results>();
     double greedyObj;
     {
-      BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
-      auto scenario = provider.createScenario(1);
-      BPMNOS::Execution::Engine engine;
+      auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+      auto scenario = provider->createScenario(1);
+      BPMNOS::Execution::Engine engine(model);
       BPMNOS::Execution::GreedyController controller(evaluator);
       controller.connect(&engine);
-      BPMNOS::Execution::TimeWarp timeHandler;
-      timeHandler.connect(&engine);
-      engine.run(scenario.get());
+      engine.run(std::move(scenario));
       greedyObj = (double)engine.getSystemState()->getObjective();
       greedyResults->add(engine.getSystemState());
     }
 
     WHEN( "RolloutController runs with all candidates (default config)" ) {
-      BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
-      auto scenario = provider.createScenario();
-      BPMNOS::Execution::Engine engine;
+      auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+      auto scenario = provider->createScenario();
+      BPMNOS::Execution::Engine engine(model);
       BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = 1 });
       controller.connect(&engine);
-      BPMNOS::Execution::TimeWarp timeHandler;
-      timeHandler.connect(&engine);
-      engine.run(scenario.get());
+      engine.run(std::move(scenario));
       double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "Rollout objective is at least as good as greedy (invariant 1)" ) {
@@ -55,16 +51,14 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
     }
 
     WHEN( "RolloutController runs with candidates=1" ) {
-      BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
-      auto scenario = provider.createScenario();
-      BPMNOS::Execution::Engine engine;
+      auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+      auto scenario = provider->createScenario();
+      BPMNOS::Execution::Engine engine(model);
       BPMNOS::Execution::Recorder recorder;
       BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .candidates = 1 });
       controller.connect(&engine);
-      BPMNOS::Execution::TimeWarp timeHandler;
-      timeHandler.connect(&engine);
       recorder.subscribe(&engine);
-      engine.run(scenario.get());
+      engine.run(std::move(scenario));
       double rolloutObj = (double)engine.getSystemState()->getObjective();
 
       THEN( "Rollout objective equals greedy (invariant 2: only the greedy front is assessed)" ) {
@@ -81,14 +75,12 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
 
     WHEN( "RolloutController runs with threads=1 and threads=4" ) {
       auto run = [&](unsigned int threads) {
-        BPMNOS::Model::StaticDataProvider provider(model, folders, csv);
-        auto scenario = provider.createScenario();
-        BPMNOS::Execution::Engine engine;
+        auto provider = std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, csv);
+        auto scenario = provider->createScenario();
+        BPMNOS::Execution::Engine engine(model);
         BPMNOS::Rollout::RolloutController<Results> controller(evaluator, greedyResults, { .threads = threads } );
         controller.connect(&engine);
-        BPMNOS::Execution::TimeWarp timeHandler;
-        timeHandler.connect(&engine);
-        engine.run(scenario.get());
+        engine.run(std::move(scenario));
         return (double)engine.getSystemState()->getObjective();
       };
 

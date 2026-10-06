@@ -120,18 +120,20 @@ int main(int argc, char* argv[]) {
 
   Arguments args = parse_arguments(argc, argv);
 
-  auto createDataProvider = [&args]() -> std::unique_ptr<BPMNOS::Model::DataProvider> {
+  auto model = std::make_shared<const BPMNOS::Model::Model>(args.modelFile, args.folders);
+
+  auto createDataProvider = [&args, &model]() -> std::shared_ptr<BPMNOS::Execution::DataProvider> {
     if (args.providerName == "static") {
-      return std::make_unique<BPMNOS::Model::StaticDataProvider>(args.modelFile,args.folders,args.dataFile);
+      return std::make_shared<BPMNOS::Execution::StaticDataProvider>(model, args.dataFile);
     }
     else if (args.providerName == "expected") {
-      return std::make_unique<BPMNOS::Model::ExpectedValueDataProvider>(args.modelFile,args.folders,args.dataFile);
+      return std::make_shared<BPMNOS::Execution::ExpectedValueDataProvider>(model, args.dataFile);
     }
     else if (args.providerName == "dynamic") {
-      return std::make_unique<BPMNOS::Model::DynamicDataProvider>(args.modelFile,args.folders,args.dataFile);
+      return std::make_shared<BPMNOS::Execution::DynamicDataProvider>(model, args.dataFile);
     }
     else if (args.providerName == "stochastic") {
-      return std::make_unique<BPMNOS::Model::StochasticDataProvider>(args.modelFile,args.folders,args.dataFile,args.seed);
+      return std::make_shared<BPMNOS::Execution::StochasticDataProvider>(model, args.dataFile, args.seed);
     }
     else {
       std::cerr << "Error: unknown data provider.\n";
@@ -177,21 +179,20 @@ int main(int argc, char* argv[]) {
     for ( unsigned int scenarioId = 0; scenarioId < args.repetitions; ++scenarioId ) {
       greedyRuns.push_back( pool.submit(greedyQueue, [&, scenarioId]() {
         // createScenario(s) seeds the scenario at provider.seed + s. Offset by +1 so the greedy baseline
-        // samples provider.seed+1 .. provider.seed+repetitions — the same realizations the rollouts take,
-        // a rollout at index i asking its scenario for its i-th realization and a stochastic scenario
-        // numbering those from the seed after its own. That gives common random numbers between the
-        // baseline and the rollouts, and keeps both off the base seed that the live run will realize.
+        // samples provider.seed+1 .. provider.seed+repetitions — the same seeds the rollouts take, a fork
+        // with index i of the live run, which is seeded at provider.seed, being seeded at provider.seed+i+1.
+        // That gives common random numbers between the baseline and the rollouts, and keeps both off the
+        // base seed that the live run will realize.
         auto greedyScenario = dataProvider->createScenario(scenarioId + 1);
+        // a run beginning before its first instance only ticks through empty instants
+        auto greedyStartTime = dataProvider->getEarliestInstantiationTime(*greedyScenario);
 
         BPMNOS::Rollout::DecisionCounter greedyDecisionCounter;   // declared before the engine so it outlives it
-        BPMNOS::Execution::Engine greedyEngine;
+        BPMNOS::Execution::Engine greedyEngine(model);
         BPMNOS::Execution::GreedyController greedyController(evaluator);
         greedyController.connect(&greedyEngine);
         greedyDecisionCounter.connect(&greedyEngine);   // count the baseline's rolled-out decisions for the cutoff
-        BPMNOS::Execution::TimeWarp greedyTimeHandler;
-        greedyTimeHandler.connect(&greedyEngine);
-        // a run beginning before its first instance only ticks through empty instants
-        greedyEngine.run(greedyScenario.get(), greedyScenario->getEarliestInstantiationTime());
+        greedyEngine.run(std::move(greedyScenario), greedyStartTime);
 
         // The final system state is valid while greedyEngine is alive (here); add it under the lock.
         std::lock_guard greedyResultsLock(greedyResultsMutex);
@@ -207,7 +208,7 @@ int main(int argc, char* argv[]) {
   }
   
   auto scenario = dataProvider->createScenario();
-  BPMNOS::Execution::Engine engine;
+  BPMNOS::Execution::Engine engine(model);
   auto cutoff = (unsigned int)std::ceil(args.cutoff * (double)maxDecisionCount);
   BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ .candidates = args.candidates, .repetitions = args.repetitions, .cutoff = cutoff, .threads = args.threads, .bisection = args.bisection };
   // Build and subscribe the verbose progress logger here (where the engine is available), then move ownership
@@ -221,9 +222,6 @@ int main(int argc, char* argv[]) {
 
   BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results> controller(evaluator, greedyResults, config, std::move(logger));
   controller.connect(&engine);
-
-  BPMNOS::Execution::TimeWarp timeHandler;
-  timeHandler.connect(&engine);
 
   std::ofstream jsonStream;
   std::unique_ptr<BPMNOS::Execution::Recorder> recorder;
@@ -241,7 +239,8 @@ int main(int argc, char* argv[]) {
   sentinel.subscribe(&engine);
 
   // a run beginning before its first instance only ticks through empty instants
-  engine.run(scenario.get(), scenario->getEarliestInstantiationTime());
+  auto startTime = dataProvider->getEarliestInstantiationTime(*scenario);
+  engine.run(std::move(scenario), startTime);
   logger.reset();
   std::cout << "Status: " << BPMNOS::Execution::outcome[(size_t)sentinel.getOutcome()] << std::endl;
 
