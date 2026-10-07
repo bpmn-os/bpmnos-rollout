@@ -42,7 +42,7 @@ set(FETCHCONTENT_QUIET FALSE)
 # requirement be used in place of the fetch, and since the declared version does not change with every
 # interface change, an installed engine could shadow the pinned revision and silently supply a different
 # interface. Rollout therefore always builds against the revision named here.
-set(BPMNOS_REF 1ca1ba56d7c937175f05e16e785515f09f335ae4)
+set(BPMNOS_REF 786b8cda5ddf3e6d0c6d8c4cee982dc419a16602)
 
 # bpmnos-greedy is the baseline every rollout result is compared against, so it is built alongside
 # bpmnos-rollout.
