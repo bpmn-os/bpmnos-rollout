@@ -40,7 +40,7 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
   auto originalToken = original->token.lock();
   assert( originalToken );
   auto instanceId = originalToken->getInstanceId();
-  const BPMN::FlowNode* node = originalToken->node;
+  const BPMN::Node* node = originalToken->node;
   auto* systemState = engine.getSystemState();   // the copy installed by initializeSystemState
 
   // Find the equivalent token in a pending-decision list of the copied state. The (instance, node) pair must

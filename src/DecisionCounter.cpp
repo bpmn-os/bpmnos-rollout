@@ -24,8 +24,8 @@ bool DecisionCounter::isCounted(const Decision* decision) {
     // only entries into the children of a sequential ad-hoc subprocess are rolled out
     auto token = decision->token.lock();
     assert( token );
-    auto node = token->node;
-    return node->parent && node->parent->represents<BPMNOS::Model::SequentialAdHocSubProcess>();
+    auto flowNode = token->node->as<BPMN::FlowNode>();
+    return flowNode->parent && flowNode->parent->represents<BPMNOS::Model::SequentialAdHocSubProcess>();
   }
   if ( dynamic_cast<const ExitDecision*>(decision) ) {
     return false;                                   // exits are always dispatched greedily
@@ -44,7 +44,7 @@ bool DecisionCounter::isCounted(const Decision* decision) {
     assert( token );
     auto extensionElements = token->node->extensionElements->as<BPMNOS::Model::ExtensionElements>();
     auto messageDefinition = extensionElements->getMessageDefinition();
-    auto recipientHeader = messageDefinition->getRecipientHeader(token->getAttributeRegistry(), token->status, *token->data, token->globals);
+    auto recipientHeader = messageDefinition->getRecipientHeader(token->getAttributeRegistry(), token->status, *token->data, token->getInstanceId());
     bool direct = message->recipient.has_value() || recipientHeader[BPMNOS::Model::MessageDefinition::Index::Sender].has_value();
     return !direct;
   }
