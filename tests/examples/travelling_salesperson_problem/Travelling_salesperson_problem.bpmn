@@ -6,7 +6,7 @@
         <bpmnos:attributes>
           <bpmnos:attribute id="Timestamp" type="decimal" name="timestamp" objective="minimize" weight="1" />
           <bpmnos:attribute id="Origin" type="string" name="origin" />
-          <bpmnos:attribute id="Locations" type="collection" name="locations" />
+          <bpmnos:attribute id="Locations" type="string[]" name="locations" />
         </bpmnos:attributes>
       </bpmnos:status>
     </bpmn2:extensionElements>
@@ -81,9 +81,9 @@
   </bpmn2:process>
   <bpmn2:dataStore id="DataStore_2" name="Distance table">
     <bpmn2:extensionElements>
-      <bpmnos:tables>
-        <bpmnos:table id="Table_1" source="distances.csv" name="distance" header="From;To;Distance" />
-      </bpmnos:tables>
+      <bpmnos:inputs>
+        <bpmnos:input id="Table_1" name="distance" type="lookup" source="distances.csv" schema="From: string;To: string;Distance: decimal" />
+      </bpmnos:inputs>
     </bpmn2:extensionElements>
   </bpmn2:dataStore>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
