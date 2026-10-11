@@ -104,7 +104,7 @@ In the stochastic case, where actual item size is only revaled when handling the
               <bpmnos:restriction id="Restriction_2ugp22b" expression="items_requested == items" />
             </bpmnos:restrictions>
             <bpmnos:operators>
-              <bpmnos:operator id="Operator_2910hvr" expression="residual := (capacity - total_size - size)/capacity" type="decimal" />
+              <bpmnos:operator id="Operator_2910hvr" expression="residual := (capacity - total_size - size)/capacity" />
             </bpmnos:operators>
           </bpmnos:guidance>
         </bpmn2:extensionElements>
@@ -149,14 +149,14 @@ In the stochastic case, where actual item size is only revaled when handling the
           <bpmn2:sequenceFlow id="Flow_0an2vmk" name="sufficient capacity" sourceRef="SplitGateway" targetRef="MergeGateway">
             <bpmn2:extensionElements>
               <bpmnos:restrictions>
-                <bpmnos:restriction id="Condition_088rne3" expression="total_size + size &#60;= capacity" parameter="[object Object]" />
+                <bpmnos:restriction id="Condition_088rne3" expression="total_size + size &#60;= capacity" />
               </bpmnos:restrictions>
             </bpmn2:extensionElements>
           </bpmn2:sequenceFlow>
           <bpmn2:sequenceFlow id="Flow_0kc2iyd" name="insufficient capacity" sourceRef="SplitGateway" targetRef="ClearBin">
             <bpmn2:extensionElements>
               <bpmnos:restrictions>
-                <bpmnos:restriction id="Condition_0v9pckr" expression="total_size + size &#62; capacity" parameter="[object Object]" />
+                <bpmnos:restriction id="Condition_0v9pckr" expression="total_size + size &#62; capacity" />
               </bpmnos:restrictions>
             </bpmn2:extensionElements>
           </bpmn2:sequenceFlow>
@@ -199,7 +199,7 @@ In the stochastic case, where actual item size is only revaled when handling the
     <bpmn2:intermediateCatchEvent id="ConditionalEvent" name="All items allocated">
       <bpmn2:extensionElements>
         <bpmnos:restrictions>
-          <bpmnos:restriction id="Condition_05dlon8" expression="items_allocated == items" parameter="[object Object]" />
+          <bpmnos:restriction id="Condition_05dlon8" expression="items_allocated == items" />
         </bpmnos:restrictions>
       </bpmn2:extensionElements>
       <bpmn2:incoming>Flow_1rghjse</bpmn2:incoming>
