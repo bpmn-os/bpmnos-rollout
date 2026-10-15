@@ -31,15 +31,12 @@ In the stochastic case, where actual item size is only revaled when handling the
     </bpmn2:endEvent>
     <bpmn2:sendTask id="RequestActivity" name="Request">
       <bpmn2:extensionElements>
-        
-          <bpmnos:message name="Request">
-            <bpmnos:content key="Item" attribute="instance" />
-            <bpmnos:content key="Size" attribute="size" />
-          </bpmnos:message>
-        
+        <bpmnos:message name="request" type="{ item: string, size: decimal }" />
         <bpmnos:status>
           <bpmnos:operators>
             <bpmnos:operator id="Operator_158geoe" expression="items_requested += 1" />
+            <bpmnos:operator id="Operator_SendItem" expression="request.item := instance" />
+            <bpmnos:operator id="Operator_SendSize" expression="request.size := size" />
           </bpmnos:operators>
         </bpmnos:status>
       </bpmn2:extensionElements>
@@ -79,10 +76,6 @@ In the stochastic case, where actual item size is only revaled when handling the
             <bpmnos:attribute id="Item" type="string" name="item" />
             <bpmnos:attribute id="Size" type="decimal" name="size" />
           </bpmnos:attributes>
-          <bpmnos:operators>
-            <bpmnos:operator id="Operator_2bo3f0c" expression="usage_count := max{usage_count,1}" />
-            <bpmnos:operator id="Operator_3cjc7m2" expression="items_allocated += 1" />
-          </bpmnos:operators>
         </bpmnos:status>
       </bpmn2:extensionElements>
       <bpmn2:sequenceFlow id="Flow_04nmpfp" sourceRef="CatchRequestMessage" targetRef="AdHocSubProcess" />
@@ -91,10 +84,15 @@ In the stochastic case, where actual item size is only revaled when handling the
       </bpmn2:endEvent>
       <bpmn2:startEvent id="CatchRequestMessage" name="Request" isInterrupting="false">
         <bpmn2:extensionElements>
-          <bpmnos:message name="Request">
-            <bpmnos:content key="Item" attribute="item" />
-            <bpmnos:content key="Size" attribute="size" />
-          </bpmnos:message>
+          <bpmnos:status>
+            <bpmnos:operators>
+              <bpmnos:operator id="Operator_ReceiveItem" expression="item := request.item" />
+              <bpmnos:operator id="Operator_ReceiveSize" expression="size := request.size" />
+              <bpmnos:operator id="Operator_2bo3f0c" expression="usage_count := max{usage_count,1}" />
+              <bpmnos:operator id="Operator_3cjc7m2" expression="items_allocated += 1" />
+            </bpmnos:operators>
+          </bpmnos:status>
+          <bpmnos:message name="request" type="{ item: string, size: decimal }" />
           <bpmnos:guidance type="message">
             <bpmnos:attributes>
               <bpmnos:attribute id="Attribute_2jeu4u0" type="decimal" name="residual" objective="minimize" weight="1" />

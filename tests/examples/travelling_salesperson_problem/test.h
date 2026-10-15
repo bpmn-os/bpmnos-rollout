@@ -65,7 +65,9 @@ SCENARIO( "Travelling salesperson problem - rollout invariants", "[examples][tra
         REQUIRE( rolloutObj == greedyObj );
       }
       AND_THEN( "Locations are visited in the same nearest-neighbour order as greedy" ) {
-        auto visitLog = recorder.find(nlohmann::json{{"nodeId", "VisitLocation"}, {"state", "ENTERED"}});
+        // the location is assigned by the operators of the task, which are applied when an instance becomes busy;
+        // the main token of the multi-instance activity is never busy
+        auto visitLog = recorder.find(nlohmann::json{{"nodeId", "VisitLocation"}, {"state", "BUSY"}});
         REQUIRE( visitLog.size() == 3 );
         REQUIRE( visitLog[0]["status"]["location"] == "Berlin" );
         REQUIRE( visitLog[1]["status"]["location"] == "Cologne" );
