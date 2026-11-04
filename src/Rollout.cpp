@@ -60,7 +60,7 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
       throw std::logic_error("Rollout: cannot find token at node '" + node->id + "' for instance '" + BPMNOS::to_string(instanceId, STRING) + "'");
     }
     assert( found->node == originalToken->node && "Rollout: cloned token has a different node than the original" );
-    assert( found->status == originalToken->status && "Rollout: cloned token status differs from the original (deep copy not faithful)" );
+    assert( found->status.attributes == originalToken->status.attributes && found->status.objects == originalToken->status.objects && "Rollout: cloned token status differs from the original (deep copy not faithful)" );
     assert( found->decisionRequest && "Rollout: pending token has no decision request" );
     return found;
   };
@@ -69,11 +69,6 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
   if ( dynamic_cast<BPMNOS::Execution::EntryDecision*>(original.get()) ) {
     if ( auto* token = findToken(systemState->pendingEntryDecisions) ) {
       return std::make_shared<EntryDecision>(token->decisionRequest.get(), evaluator.get());
-    }
-  }
-  else if ( dynamic_cast<BPMNOS::Execution::ExitDecision*>(original.get()) ) {
-    if ( auto* token = findToken(systemState->pendingExitDecisions) ) {
-      return std::make_shared<ExitDecision>(token->decisionRequest.get(), evaluator.get());
     }
   }
   else if ( auto* choice = dynamic_cast<BPMNOS::Execution::ChoiceDecision*>(original.get()) ) {

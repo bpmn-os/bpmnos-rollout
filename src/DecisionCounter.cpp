@@ -27,9 +27,6 @@ bool DecisionCounter::isCounted(const Decision* decision) {
     auto flowNode = token->node->as<BPMN::FlowNode>();
     return flowNode->parent && flowNode->parent->represents<BPMNOS::Model::SequentialAdHocSubProcess>();
   }
-  if ( dynamic_cast<const ExitDecision*>(decision) ) {
-    return false;                                   // exits are always dispatched greedily
-  }
   if ( dynamic_cast<const ChoiceDecision*>(decision) ) {
     return true;                                    // every choice is rolled out
   }

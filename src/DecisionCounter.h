@@ -10,12 +10,11 @@ namespace BPMNOS::Rollout {
 /**
  * @brief Observer counting the decisions the rollout branches on (rolls out), dispatched on an engine.
  *
- * Only the decisions the RolloutController rolls out are counted; exits, ordinary entries, and explicitly
+ * Only the decisions the RolloutController rolls out are counted; ordinary entries and explicitly
  * addressed (direct) messages are dispatched greedily and ignored. The classification mirrors the
  * controller's routing so the count equals the number of decisions actually branched — identically on the
  * main engine and on a rollout sub-engine:
  *  - every choice is rolled out;
- *  - an exit is never rolled out (always FirstFeasibleExit);
  *  - an entry is rolled out only if it enters a child of a SequentialAdHocSubProcess (the
  *    FirstFeasibleEntry / SequentialEntries split);
  *  - a message delivery is rolled out unless it is "direct" (explicitly addressed) — the exact test used by

@@ -19,20 +19,19 @@ namespace BPMNOS::Rollout {
 /**
  * @brief Controller selecting decisions by one-step lookahead rollout.
  *
- * The rollout controller assumes that entry and exit decisions of activities (which are not children of a
+ * The rollout controller assumes that entry decisions of activities (which are not children of a
  * SequentialAdHocSubProcess) can be made immediately when they are feasible, and that explicitly addressed
  * messages can be delivered immediately. Only when no such immediate decision is made does it start the
  * rollout mechanism, which iteratively applies candidate decisions completing the forward simulation
  * under a greedy policy. It dispatches the candidate yielding the best final objective.
  *
  * Thus, the controller makes its decisions in the following order, dispatching the first feasible one:
- *  1. `GreedyDispatcher<FirstFeasibleExit>`  — dispatch a feasible exit immediately (exits never compete).
- *  2. `GreedyDispatcher<FirstFeasibleEntry>` — dispatch a feasible entry immediately, unless it is a
+ *  1. `GreedyDispatcher<FirstFeasibleEntry>` — dispatch a feasible entry immediately, unless it is a
  *                         child of a SequentialAdHocSubProcess.
- *  3. `InstantDirectMessage` — dispatch an explicitly addressed message delivery immediately (the
+ *  2. `InstantDirectMessage` — dispatch an explicitly addressed message delivery immediately (the
  *                         receive specifies its sender, or the message names this recipient).
- *  4. `RolloutDispatcher<FirstEnumeratedChoice>` — roll out the alternatives of a choice request.
- *  5. `RolloutDispatcher<CompetingCandidates>` — roll out the remaining contested decisions, which have no
+ *  3. `RolloutDispatcher<FirstEnumeratedChoice>` — roll out the alternatives of a choice request.
+ *  4. `RolloutDispatcher<CompetingCandidates>` — roll out the remaining contested decisions, which have no
  *                         precedence between them: sequential-ad-hoc child entries and message deliveries,
  *                         merged into a single reward-ordered collection.
  *
@@ -62,11 +61,10 @@ public:
     , threadPool(config.threads)
   {
     using namespace BPMNOS::Execution;
-    // Dispatch the first feasible decision in priority order. Exit, entry, and direct message delivery never
+    // Dispatch the first feasible decision in priority order. Entry and direct message delivery never
     // branch, so they are dispatched greedily from the same Candidates collections as GreedyController; the
     // contested choice, and the merged sequential entries and message deliveries, are rolled out. All rollout
     // dispatchers share the same baseline, advanced in place to a winner's results.
-    dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleExit>>(evaluator) );
     dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
     dispatchers.push_back( std::make_unique<InstantDirectMessage>() );
     if ( config.bisection ) {
