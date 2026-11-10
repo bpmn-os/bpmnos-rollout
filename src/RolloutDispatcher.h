@@ -30,7 +30,8 @@ namespace BPMNOS::Rollout {
  * logging: `stringify()` yields a human-readable summary string, and `jsonify()` yields an
  * `nlohmann::ordered_json` entry. It is held only by `shared_ptr` and never copied, so it may carry
  * arbitrarily heavy statistics. An optional `dominates(const ResultsType&) const` lets a candidate's
- * remaining repetitions be cancelled early once the results of the greedy decision provably beat it.
+ * remaining repetitions be cancelled early once the results of the greedy decision provably beat it, which
+ * also excludes it from the choice.
  */
 template <typename T>
 concept ResultsPolicy =
@@ -120,6 +121,10 @@ public:
       results[decisionIndex] = std::make_shared<ResultsType>();
     }
     std::vector<std::mutex> resultMutexes( decisions.size() );
+    // Whether a candidate was cancelled as dominated, which excludes it from the choice whatever the mean of
+    // the runs it did record. A char per candidate rather than a vector<bool>, whose flags share words and so
+    // could not be written under the mutexes of different candidates.
+    std::vector<char> dominated( decisions.size(), false );
     while ( queues.size() < decisions.size() ) {
       queues.push_back( controller->threadPool.addQueue() );   // one queue per candidate, reused across dispatches
     }
@@ -133,7 +138,7 @@ public:
         jobs.clear();
       }
       for ( unsigned int round = 0; round < controller->config.repetitions; ++round ) {
-        jobs.push_back( controller->threadPool.submit( queues[decisionIndex], [this, &decisions, &results, &resultMutexes, systemState, decisionIndex, round]() {
+        jobs.push_back( controller->threadPool.submit( queues[decisionIndex], [this, &decisions, &results, &resultMutexes, &dominated, systemState, decisionIndex, round]() {
           Rollout rollout( decisions[decisionIndex], systemState, evaluator, controller->config.bisect, round, copyMutex );
           if ( auto* finalState = rollout.getSystemState() ) {
             std::lock_guard lock( resultMutexes[decisionIndex] );
@@ -143,6 +148,7 @@ public:
             // test (and its overhead) is never incurred.
             if constexpr ( requires ( const ResultsType& a, const ResultsType& b ) { { a.dominates(b) } -> std::convertible_to<bool>; } ) {
               if ( decisionIndex != 0 && controller->config.repetitions > 1 && results[0]->dominates( *results[decisionIndex] ) ) {
+                dominated[decisionIndex] = true;
                 controller->threadPool.clearQueue( queues[decisionIndex] );
               }
             }
@@ -163,9 +169,13 @@ public:
       controller->threadPool.clearQueue( queue );
     }
 
-    // Dispatch the candidate with the best results; ties keep the greedy front (first maximum).
+    // Dispatch the candidate with the best results, an alternative cancelled as dominated being excluded;
+    // ties keep the greedy front (first maximum).
     std::size_t bestIndex = 0;
     for ( std::size_t decisionIndex = 1; decisionIndex < decisions.size(); ++decisionIndex ) {
+      if ( dominated[decisionIndex] ) {
+        continue;
+      }
       if ( *results[decisionIndex] > *results[bestIndex] ) {
         bestIndex = decisionIndex;
       }
