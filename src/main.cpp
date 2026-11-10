@@ -165,9 +165,8 @@ int main(int argc, char* argv[]) {
   }
   auto evaluator = createEvaluator();
 
-  // Greedy baseline: run the greedy controller once per repetition (common random numbers via the
-  // scenario id) and collect each final system state's objective as the baseline the rollout is
-  // compared against. The repetitions run in parallel on the thread pool (one queue).
+  // Greedy baseline: run the greedy controller once per repetition and collect each final system state's
+  // objective as the first progress reported; their numbers of decisions determine the cutoff. The repetitions run in parallel on the thread pool (one queue).
   auto greedyResults = std::make_shared<BPMNOS::Rollout::Results>();
   // For the cutoff: count the rolled-out decisions of each greedy baseline run and keep the maximum.
   std::size_t maxDecisionCount = 0;
@@ -183,8 +182,9 @@ int main(int argc, char* argv[]) {
         // createScenario(s) seeds the scenario at provider.seed + s. Offset by +1 so the greedy baseline
         // samples provider.seed+1 .. provider.seed+repetitions — the same seeds the rollouts take, a fork
         // with index i of the live run, which is seeded at provider.seed, being seeded at provider.seed+i+1.
-        // That gives common random numbers between the baseline and the rollouts, and keeps both off the
-        // base seed that the live run will realize.
+        // The two share the values drawn after the step a fork is made at, but not those the live run has
+        // disclosed up to it, so that they agree only before anything is disclosed; both stay off the base seed
+        // that the live run will realize.
         auto greedyScenario = dataProvider->createScenario(scenarioId + 1);
         // a run beginning before its first instance only ticks through empty instants
         auto greedyStartTime = dataProvider->getEarliestInstantiationTime(*greedyScenario);

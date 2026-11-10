@@ -26,11 +26,11 @@ namespace BPMNOS::Rollout {
  * @brief Requirements on the rollout results policy type.
  *
  * A results type is default-constructible, records a rollout's final state via `add(const SystemState*)`,
- * and is comparable with `>` so the best candidate can be selected. It reports itself two ways for baseline
+ * and is comparable with `>` so the best candidate can be selected. It reports itself two ways for progress
  * logging: `stringify()` yields a human-readable summary string, and `jsonify()` yields an
  * `nlohmann::ordered_json` entry. It is held only by `shared_ptr` and never copied, so it may carry
  * arbitrarily heavy statistics. An optional `dominates(const ResultsType&) const` lets a candidate's
- * remaining repetitions be cancelled early once the baseline provably beats it.
+ * remaining repetitions be cancelled early once the results of the greedy decision provably beat it.
  */
 template <typename T>
 concept ResultsPolicy =
@@ -42,8 +42,8 @@ concept ResultsPolicy =
     { a.jsonify() } -> std::convertible_to<nlohmann::ordered_json>;
   };
 
-// The dispatcher holds a back-pointer to its owning controller and reads config / thread pool / baseline /
-// the cut-off decision through it. The full definition is available at instantiation (RolloutController.h
+// The dispatcher holds a back-pointer to its owning controller and reads config / thread pool / the cut-off
+// decision and advances the progress reported through it. The full definition is available at instantiation (RolloutController.h
 // includes this header, defines the controller, and befriends the dispatcher).
 template <ResultsPolicy ResultsType>
 class RolloutController;
@@ -51,12 +51,14 @@ class RolloutController;
 /**
  * @brief Generic rollout policy dispatcher owning a concrete candidate collection.
  *
- * On each dispatch the RolloutDispatcher collects the top feasible candidate decisions in reward order. The
- * reward-order front is the greedy decision: it is not rolled out — its result is the shared baseline (the
- * value of the trajectory committed so far). Each remaining candidate is rolled out `repetitions` times on
- * its own queue of the shared thread pool, folding each rollout's final state into its own results. The
- * candidate with the best results is dispatched (ties keep the greedy front), and when a non-greedy candidate
- * wins the baseline is advanced to its results. Header-only so the results type stays an open policy
+ * On each dispatch the RolloutDispatcher collects the top feasible candidate decisions in reward order, the
+ * front of which is the greedy decision. Every candidate, the front included, is rolled out `repetitions`
+ * times from the current state on its own queue of the shared thread pool, the r-th rollout of every
+ * candidate on the fork with index r, so that all candidates are valued on the same predictions; the front is
+ * rolled out first, so that an alternative can be cancelled against its complete results. The candidate with
+ * the best results is dispatched (ties keep the greedy front). A stored result valuing the greedy decision
+ * without rolling it out would be correct only if nothing uncertain had been disclosed since it was
+ * computed. When a non-greedy candidate wins, the progress reported is advanced to its results. Header-only so the results type stays an open policy
  * parameter; the forward simulation of a single candidate is delegated to the non-template Rollout. The
  * results are held by `shared_ptr` and moved, never copied, so a heavy results type is never deep-copied.
  */
@@ -108,14 +110,13 @@ public:
       return decisions.front();
     }
 
-    // The reward-order front is the greedy decision: it is not rolled out — its result is the shared
-    // baseline (and is never mutated below). Each remaining candidate gets its own results, rolled out
-    // `repetitions` times on its own queue, folding each rollout's final state in under a mutex. Once the
-    // baseline provably dominates a candidate (if the results type supports it), that candidate's remaining
-    // repetitions are cancelled by clearing its queue.
+    // Every candidate, the reward-order front (the greedy decision) included, gets its own results, rolled out
+    // `repetitions` times on its own queue from the current state, folding each rollout's final state in under
+    // a mutex, so that all candidates are valued on the same predictions. The front is rolled out first. Once
+    // its results provably dominate an alternative (if the results type supports it), that alternative's
+    // remaining repetitions are cancelled by clearing its queue.
     std::vector< std::shared_ptr<ResultsType> > results( decisions.size() );
-    results[0] = controller->baselineResults;
-    for ( std::size_t decisionIndex = 1; decisionIndex < results.size(); ++decisionIndex ) {
+    for ( std::size_t decisionIndex = 0; decisionIndex < results.size(); ++decisionIndex ) {
       results[decisionIndex] = std::make_shared<ResultsType>();
     }
     std::vector<std::mutex> resultMutexes( decisions.size() );
@@ -123,18 +124,25 @@ public:
       queues.push_back( controller->threadPool.addQueue() );   // one queue per candidate, reused across dispatches
     }
     std::vector< std::future<void> > jobs;
-    for ( std::size_t decisionIndex = 1; decisionIndex < decisions.size(); ++decisionIndex ) {
+    for ( std::size_t decisionIndex = 0; decisionIndex < decisions.size(); ++decisionIndex ) {
+      if ( decisionIndex == 1 ) {
+        // the results of the front are complete before an alternative can be cancelled against them
+        for ( auto& job : jobs ) {
+          job.get();
+        }
+        jobs.clear();
+      }
       for ( unsigned int round = 0; round < controller->config.repetitions; ++round ) {
         jobs.push_back( controller->threadPool.submit( queues[decisionIndex], [this, &decisions, &results, &resultMutexes, systemState, decisionIndex, round]() {
           Rollout rollout( decisions[decisionIndex], systemState, evaluator, controller->config.bisect, round, copyMutex );
           if ( auto* finalState = rollout.getSystemState() ) {
             std::lock_guard lock( resultMutexes[decisionIndex] );
             results[decisionIndex]->add( finalState );
-            // Cancel this candidate's remaining repetitions once the baseline provably dominates it.
+            // Cancel this alternative's remaining repetitions once the front provably dominates it.
             // Skipped when repetitions == 1: there are no remaining reps to cancel, so the early-stopping
             // test (and its overhead) is never incurred.
             if constexpr ( requires ( const ResultsType& a, const ResultsType& b ) { { a.dominates(b) } -> std::convertible_to<bool>; } ) {
-              if ( controller->config.repetitions > 1 && controller->baselineResults->dominates( *results[decisionIndex] ) ) {
+              if ( decisionIndex != 0 && controller->config.repetitions > 1 && results[0]->dominates( *results[decisionIndex] ) ) {
                 controller->threadPool.clearQueue( queues[decisionIndex] );
               }
             }
@@ -163,12 +171,11 @@ public:
       }
     }
 
-    // A non-greedy candidate won: the committed trajectory becomes this candidate's rolled-out trajectory,
-    // so the shared baseline is advanced (moved) to its results. Dispatching the greedy front (bestIndex 0)
-    // leaves the committed trajectory — and thus the baseline — unchanged.
+    // A non-greedy candidate won: the progress reported is advanced (moved) to its results. No later decision
+    // reads them, every candidate being rolled out afresh at every dispatch.
     if ( bestIndex != 0 ) {
       controller->baselineResults = std::move( results[bestIndex] );
-      // A baseline update is reported by injecting a "rollout" entry into the controller's logger when one is
+      // A progress update is reported by injecting a "rollout" entry into the controller's logger when one is
       // attached; otherwise a tab-separated progress line is printed. dispatchEvent runs serially on the main
       // engine, so emitting here is not racy.
       if ( controller->logger ) {
@@ -189,7 +196,7 @@ public:
 protected:
   Candidates candidates;            ///< the reward-ordered candidate collection rolled out
   std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator;  ///< shared with the candidate source and with each Rollout
-  RolloutController<ResultsType>* controller;   ///< owning controller; source of config (candidates/repetitions), threadPool, baselineResults, and the cut-off decision
+  RolloutController<ResultsType>* controller;   ///< owning controller; source of config (candidates/repetitions) and threadPool, holder of baselineResults, and the cut-off decision
   std::vector<ThreadPool::QueueId> queues;   ///< one queue per candidate, grown lazily and reused across dispatches
   std::mutex copyMutex;             ///< serializes each rollout's deep copy of the shared source state (the engine is not internally synchronized; the copy reads lazily-pruning containers that mutate on read)
 };

@@ -2,7 +2,7 @@
 
 This project provides a one-step lookahead [rollout algorithm](https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://web.mit.edu/dimitrib/www/Rollouts_Survey.pdf&ved=2ahUKEwjfjM6TkOOUAxV8X_EDHXsuBT4QFnoECCAQAQ&usg=AOvVaw0i0d_YnpfctznI7HiVMTyE) for BPMN-OS. 
 
-The algorithm assesses each candidate decision by determining the final objective after assuming the decision is made and completing the simulation using a greedy algorithm.
+The algorithm assesses each candidate decision by determining the final objective after assuming the decision is made and completing the simulation using a greedy algorithm. Every candidate, the decision the greedy algorithm would take included, is assessed from the current state at every decision, on the same sampled futures, so that in a stochastic scenario the candidates are compared on what has actually been disclosed rather than on what was expected when an earlier decision was assessed.
 
 To limit the computational effort, the following parameters can be provided:
 
