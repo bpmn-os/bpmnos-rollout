@@ -10,7 +10,7 @@ To limit the computational effort, the following parameters can be provided:
 - `repetitions`: the number of rollouts per candidate decision. This parameter is only relevant for stochastic scenarios and the default value is 1. If set to a value above 1, the average objective value is used to decide on the chosen candidate.
 - `cutoff`: limits how many decisions are rolled out before the controller falls back to the greedy algorithm for the remainder of the run. It is given as a fraction of the number of decisions made in the greedy baseline run (e.g. `0.5` rolls out the first half of the decisions and takes the rest greedily). If set to zero (default), all decisions are rolled out.
 - `threads`: the number of threads to be used for parallel rollouts (default: 1). If set to zero, all available hardware threads are used.
-- `bisection`: if set, a choice is assessed by bisection instead of by enumerating all of its alternatives (default). Bisection is useful for a choice over a bounded numeric value.
+- `bisect`: the least number of values a choice must allow to be assessed by bisection rather than by enumerating all of its values, both by the rollout and by the greedy algorithm, in the baseline run and in the completion of every candidate decision. Bisection is useful for a choice over a large range of numeric values. If not set (default), every choice with a step is enumerated, and a choice of a decimal attribute without a step, whose values are too many to be enumerated, is bisected.
 
 ## Requirements
 
@@ -41,10 +41,6 @@ make dev # (debug)
 ```
 with the preset indicated in parentheses. The executable is written to `build/release/bin/bpmnos-rollout`.
 
-`bpmnos-greedy` provides the baseline each rollout is compared against and is built alongside, at
-`build/release/_deps/bpmnos-build/bin/bpmnos-greedy`. An engine resolved from a prefix instead of built
-here brings its own, already installed.
-
 ## Tests
 
 To (build and) run the test suite, use
@@ -71,5 +67,5 @@ cmake --install build/release --prefix <target>
 to install it into the `<target>` folder.
 
 When the engine had to be built here, because no installed copy satisfied the requirement, it is installed
-alongside `bpmnos-rollout`: the two libraries, the headers they include, and `bpmnos-greedy`. An engine
+alongside `bpmnos-rollout`: the two libraries and the headers they include. An engine
 resolved from a prefix is already installed and is not installed again.

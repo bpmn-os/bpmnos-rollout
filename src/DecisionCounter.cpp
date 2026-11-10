@@ -1,5 +1,4 @@
 #include "DecisionCounter.h"
-#include <cassert>
 
 using namespace BPMNOS::Rollout;
 using namespace BPMNOS::Execution;
@@ -13,37 +12,7 @@ const std::size_t& DecisionCounter::count() const {
 }
 
 void DecisionCounter::notice(const Observable* observable) {
-  if ( auto decision = dynamic_cast<const Decision*>(observable);
-       decision && isCounted(decision) ) {
+  if ( dynamic_cast<const Decision*>(observable) ) {
     ++decisions;
   }
-}
-
-bool DecisionCounter::isCounted(const Decision* decision) {
-  if ( dynamic_cast<const EntryDecision*>(decision) ) {
-    // only entries into the children of a sequential ad-hoc subprocess are rolled out
-    auto token = decision->token.lock();
-    assert( token );
-    auto flowNode = token->node->as<BPMN::FlowNode>();
-    return flowNode->parent && flowNode->parent->represents<BPMNOS::Model::SequentialAdHocSubProcess>();
-  }
-  if ( dynamic_cast<const ChoiceDecision*>(decision) ) {
-    return true;                                    // every choice is rolled out
-  }
-  if ( auto messageDelivery = dynamic_cast<const MessageDeliveryDecision*>(decision) ) {
-    auto message = messageDelivery->message.lock();
-    if ( !message ) {
-      return false;
-    }
-    // Direct (explicitly addressed) deliveries are dispatched greedily by InstantDirectMessage; the rest are
-    // rolled out. Direct test replicated from InstantDirectMessage on the recipient token.
-    auto token = decision->token.lock();
-    assert( token );
-    auto extensionElements = token->node->extensionElements->as<BPMNOS::Model::ExtensionElements>();
-    auto messageDefinition = extensionElements->getMessageDefinition();
-    auto recipientHeader = messageDefinition->getRecipientHeader(token->getAttributeRegistry(), token->status, *token->data, token->getInstanceId());
-    bool direct = message->recipient.has_value() || recipientHeader[BPMNOS::Model::MessageDefinition::Index::Sender].has_value();
-    return !direct;
-  }
-  return false;
 }

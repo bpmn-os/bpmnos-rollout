@@ -10,15 +10,11 @@ namespace BPMNOS::Rollout {
 /**
  * @brief Observer counting the decisions the rollout branches on (rolls out), dispatched on an engine.
  *
- * Only the decisions the RolloutController rolls out are counted; ordinary entries and explicitly
- * addressed (direct) messages are dispatched greedily and ignored. The classification mirrors the
- * controller's routing so the count equals the number of decisions actually branched — identically on the
- * main engine and on a rollout sub-engine:
- *  - every choice is rolled out;
- *  - an entry is rolled out only if it enters a child of a SequentialAdHocSubProcess (the
- *    FirstFeasibleEntry / SequentialEntries split);
- *  - a message delivery is rolled out unless it is "direct" (explicitly addressed) — the exact test used by
- *    InstantDirectMessage, evaluated on the recipient token.
+ * Every decision is counted. The engine itself enters the activities that are not children of a sequential
+ * ad-hoc subprocess and delivers the explicitly addressed messages by events that are not decisions, so that
+ * the decisions dispatched are the choices, the entries of children of sequential ad-hoc subprocesses and the
+ * deliveries of messages that are not explicitly addressed, which are the decisions the RolloutController
+ * rolls out. The count is thus the same on the main engine and on a rollout sub-engine.
  *
  * Subscribes to Observable::Type::Event (the Candidates sources' `connect(Notifier*)` pattern).
  */
@@ -33,9 +29,6 @@ public:
   void notice(const BPMNOS::Execution::Observable* observable) override;
 
 private:
-  /// True iff this decision is counted, i.e. one the rollout branches on, mirroring the controller's routing.
-  static bool isCounted(const BPMNOS::Execution::Decision* decision);
-
   std::size_t decisions = 0;
 };
 

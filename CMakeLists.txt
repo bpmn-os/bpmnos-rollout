@@ -42,11 +42,7 @@ set(FETCHCONTENT_QUIET FALSE)
 # requirement be used in place of the fetch, and since the declared version does not change with every
 # interface change, an installed engine could shadow the pinned revision and silently supply a different
 # interface. Rollout therefore always builds against the revision named here.
-set(BPMNOS_REF 28a4820e8da22de7edc4a81c8a02247b61bf3f50)
-
-# bpmnos-greedy is the baseline every rollout result is compared against, so it is built alongside
-# bpmnos-rollout.
-set(BPMNOS_APP ON CACHE BOOL "Build bpmnos-greedy alongside bpmnos-rollout" FORCE)
+set(BPMNOS_REF f11768f1eb220f77637da7f4f1b3c8d634f0114b)
 
 FetchContent_Declare(bpmnos
   GIT_REPOSITORY https://github.com/bpmn-os/bpmnos-engine.git

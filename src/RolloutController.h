@@ -8,6 +8,7 @@
 #include "RolloutDispatcher.h"
 #include "DecisionCounter.h"
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 #include <chrono>
@@ -19,19 +20,17 @@ namespace BPMNOS::Rollout {
 /**
  * @brief Controller selecting decisions by one-step lookahead rollout.
  *
- * The rollout controller assumes that entry decisions of activities (which are not children of a
- * SequentialAdHocSubProcess) can be made immediately when they are feasible, and that explicitly addressed
- * messages can be delivered immediately. Only when no such immediate decision is made does it start the
- * rollout mechanism, which iteratively applies candidate decisions completing the forward simulation
- * under a greedy policy. It dispatches the candidate yielding the best final objective.
+ * The engine itself enters every activity that is not a child of a sequential ad-hoc subprocess and
+ * delivers every explicitly addressed message, so that the decisions left to the controller are the choices,
+ * the entries of children of sequential ad-hoc subprocesses, and the deliveries of messages that are not
+ * explicitly addressed. Each of them is made by the rollout mechanism, which iteratively applies candidate
+ * decisions completing the forward simulation under a greedy policy, and dispatches the candidate yielding
+ * the best final objective.
  *
  * Thus, the controller makes its decisions in the following order, dispatching the first feasible one:
- *  1. `GreedyDispatcher<FirstFeasibleEntry>` — dispatch a feasible entry immediately, unless it is a
- *                         child of a SequentialAdHocSubProcess.
- *  2. `InstantDirectMessage` — dispatch an explicitly addressed message delivery immediately (the
- *                         receive specifies its sender, or the message names this recipient).
- *  3. `RolloutDispatcher<FirstEnumeratedChoice>` — roll out the alternatives of a choice request.
- *  4. `RolloutDispatcher<CompetingCandidates>` — roll out the remaining contested decisions, which have no
+ *  1. `RolloutDispatcher<FirstChoice>` — roll out the alternatives of a choice request, a choice allowing at
+ *                         least `config.bisect` values being searched by bisection.
+ *  2. `RolloutDispatcher<CompetingCandidates>` — roll out the remaining contested decisions, which have no
  *                         precedence between them: sequential-ad-hoc child entries and message deliveries,
  *                         merged into a single reward-ordered collection.
  *
@@ -50,7 +49,7 @@ public:
     unsigned int repetitions = 1; ///< rollouts per candidate for stochastic scenarios (averaged)
     unsigned int cutoff = 0;      ///< max number of decisions made before switching to greedy (0 = unlimited)
     unsigned int threads = 1;     ///< number of threads used for rollouts (0 = all available hardware threads)
-    bool bisection = false;       ///< If true, use FirstBisectionalChoice, otherwise use FirstEnumeratedChoice.
+    std::optional<size_t> bisect = std::nullopt; ///< least number of values of a choice searched by bisection, by the rollout and by the greedy policy it simulates (none = only a decimal attribute without a step)
   };
   static Config default_config() { return {}; } // Workaround for compiler bug, as in GreedyController (a `Config config = {}` default argument fails to compile).
 
@@ -61,18 +60,10 @@ public:
     , threadPool(config.threads)
   {
     using namespace BPMNOS::Execution;
-    // Dispatch the first feasible decision in priority order. Entry and direct message delivery never
-    // branch, so they are dispatched greedily from the same Candidates collections as GreedyController; the
-    // contested choice, and the merged sequential entries and message deliveries, are rolled out. All rollout
-    // dispatchers share the same baseline, advanced in place to a winner's results.
-    dispatchers.push_back( std::make_unique<GreedyDispatcher<FirstFeasibleEntry>>(evaluator) ); // non-sequential entries only (config.sequential=false)
-    dispatchers.push_back( std::make_unique<InstantDirectMessage>() );
-    if ( config.bisection ) {
-      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstBisectionalChoice, ResultsType>>(evaluator, this) );
-    }
-    else {
-      dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstEnumeratedChoice, ResultsType>>(evaluator, this) );
-    }
+    // Dispatch the first feasible decision in priority order. The choice, and the merged sequential entries
+    // and message deliveries, are rolled out. All rollout dispatchers share the same baseline, advanced in
+    // place to a winner's results.
+    dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstChoice, ResultsType>>(evaluator, this, config.bisect) );
     dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
 
     // Report the initial baseline: inject a "rollout" entry into the logger when one was provided, otherwise

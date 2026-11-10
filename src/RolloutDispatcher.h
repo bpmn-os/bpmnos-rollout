@@ -63,8 +63,10 @@ class RolloutController;
 template <BPMNOS::Execution::CandidateCollection Candidates, ResultsPolicy ResultsType>
 class RolloutDispatcher : public BPMNOS::Execution::EventDispatcher {
 public:
-  RolloutDispatcher( std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator, RolloutController<ResultsType>* controller )
-    : candidates(evaluator)
+  /// Further arguments are forwarded to the constructor of the candidates after the evaluator.
+  template <typename... Args>
+  RolloutDispatcher( std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator, RolloutController<ResultsType>* controller, Args&&... args )
+    : candidates(evaluator, std::forward<Args>(args)...)
     , evaluator(std::move(evaluator))
     , controller(controller)
   {
@@ -124,7 +126,7 @@ public:
     for ( std::size_t decisionIndex = 1; decisionIndex < decisions.size(); ++decisionIndex ) {
       for ( unsigned int round = 0; round < controller->config.repetitions; ++round ) {
         jobs.push_back( controller->threadPool.submit( queues[decisionIndex], [this, &decisions, &results, &resultMutexes, systemState, decisionIndex, round]() {
-          Rollout rollout( decisions[decisionIndex], systemState, evaluator, round, copyMutex );
+          Rollout rollout( decisions[decisionIndex], systemState, evaluator, controller->config.bisect, round, copyMutex );
           if ( auto* finalState = rollout.getSystemState() ) {
             std::lock_guard lock( resultMutexes[decisionIndex] );
             results[decisionIndex]->add( finalState );

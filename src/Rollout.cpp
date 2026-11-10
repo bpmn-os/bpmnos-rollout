@@ -7,9 +7,9 @@ using namespace BPMNOS::Model;
 
 namespace BPMNOS::Rollout {
 
-Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, unsigned int index, std::mutex& copyMutex )
+Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, std::optional<size_t> bisect, unsigned int index, std::mutex& copyMutex )
   : engine(foreignState->scenario->dataProvider->getModel())
-  , greedyController(evaluator)
+  , greedyController(evaluator, { .bisect = bisect })
   , evaluator(std::move(evaluator))
 {
   // Connect the sub-engine's greedy policy before installing the state, so its cached candidate sources are

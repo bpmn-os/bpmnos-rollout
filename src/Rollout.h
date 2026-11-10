@@ -5,6 +5,7 @@
 #include <bpmnos-execution.h>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 namespace BPMNOS::Rollout {
 
@@ -12,6 +13,7 @@ namespace BPMNOS::Rollout {
  * @brief Performs a one-step lookahead rollout of a single selected decision.
  *
  * Assumes a selected decision from the current state and simulates forward with the greedy policy to termination,
+ * which bisects a choice allowing at least the given number of values, as the controller rolling out does,
  * exposing the resulting final system state. The rollout runs in a private sub-engine on its own fork of
  * the scenario, into which the current system state is copied. Independent of the candidate source and the results type, so
  * it is a plain (non-template) class compiled once. The returned state is valid only while this Rollout is
@@ -23,7 +25,7 @@ public:
   /// The engine is not internally synchronized; copyMutex (owned by the dispatcher and shared across the
   /// dispatch's parallel rollouts) serializes the deep copy of the shared source state, which reads the
   /// engine's lazily-pruning containers that mutate on read.
-  Rollout( const std::shared_ptr<BPMNOS::Execution::Decision>& decision, const BPMNOS::Execution::SystemState* systemState, std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator, unsigned int index, std::mutex& copyMutex );
+  Rollout( const std::shared_ptr<BPMNOS::Execution::Decision>& decision, const BPMNOS::Execution::SystemState* systemState, std::shared_ptr<BPMNOS::Execution::Evaluator> evaluator, std::optional<size_t> bisect, unsigned int index, std::mutex& copyMutex );
 
   /// Final state reached by the rollout (the copied system state, valid while this Rollout lives).
   const BPMNOS::Execution::SystemState* getSystemState() const;

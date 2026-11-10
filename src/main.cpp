@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <random>
+#include <optional>
 #include <bpmn++.h>
 #include <bpmnos-model.h>
 #include <bpmnos-execution.h>
@@ -17,8 +18,8 @@
 
 void print_usage() {
   std::cout << "Usage:" << std::endl;
-  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--seed <number>] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates <number>] [--repetitions <number>] [--cutoff <number>] [--threads <number>] [--bisection] [--verbose]" << std::endl;
-  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-s <number>] [-e <evaluator>] [-f <folder1> <folder2> ...] [-ca <number>] [-r <number>] [-cu <number>] [-t <number>] [-v]" << std::endl;
+  std::cout << "\tbpmnos-rollout --model <model file> --data <data file> [--json <json file>] [--provider {static|expected|dynamic|stochastic}] [--seed <number>] [--evaluator {local|guided}] [--folders <folder1> <folder2> ...] [--candidates <number>] [--repetitions <number>] [--cutoff <number>] [--threads <number>] [--bisect <number>] [--verbose]" << std::endl;
+  std::cout << "\tbpmnos-rollout -m <model file> -d <data file> [-j <json file>] [-p <provider>] [-s <number>] [-e <evaluator>] [-f <folder1> <folder2> ...] [-ca <number>] [-r <number>] [-cu <number>] [-t <number>] [-b <number>] [-v]" << std::endl;
   std::cout << std::endl;
   std::cout << "\t-m, --model <model file>:             name of the BPMN model file" << std::endl;
   std::cout << "\t-d, --data <data file>:               name of the CSV file containing the instance data" << std::endl;
@@ -31,7 +32,7 @@ void print_usage() {
   std::cout << "\t-r, --repetitions <number>:           rollouts per candidate for stochastic scenarios (default: 1)" << std::endl;
   std::cout << "\t-cu, --cutoff <number>:               max number of decisions made before switching to greedy (0 = unlimited, default)" << std::endl;
   std::cout << "\t-t, --threads <number>:               number of parallel rollout threads, 0 = all available (default: 1)" << std::endl;
-  std::cout << "\t-b, --bisection:                      use bisection for choices" << std::endl;
+  std::cout << "\t-b, --bisect <number>:                bisect choices allowing at least this number of values (default: only decimal choices without a step)" << std::endl;
   std::cout << "\t-v, --verbose:                        display the execution log" << std::endl;
   exit(1);
 }
@@ -45,7 +46,7 @@ struct Arguments {
   unsigned int seed = std::random_device{}();
   std::string evaluatorName = "guided";
   std::vector<std::string> folders;
-  bool bisection = false;
+  std::optional<size_t> bisect;
   bool verbose = false;
   unsigned int candidates = 0;  // max candidate decisions to be rolled out (0 = unlimited)
   unsigned int repetitions = 1; // rollouts per candidate for stochastic scenarios
@@ -94,8 +95,8 @@ Arguments parse_arguments(int argc, char* argv[]) {
     else if ((arg == "--threads" || arg == "-t") && i + 1 < argc) {
       args.threads = static_cast<unsigned int>(std::stoul(argv[++i]));
     }
-    else if ((arg == "--bisection" || arg == "-b")) {
-      args.bisection = true;
+    else if ((arg == "--bisect" || arg == "-b") && i + 1 < argc) {
+      args.bisect = (size_t)std::stoul(argv[++i]);
     }
     else if ((arg == "--verbose" || arg == "-v")) {
       args.verbose = true;
@@ -190,7 +191,7 @@ int main(int argc, char* argv[]) {
 
         BPMNOS::Rollout::DecisionCounter greedyDecisionCounter;   // declared before the engine so it outlives it
         BPMNOS::Execution::Engine greedyEngine(model);
-        BPMNOS::Execution::GreedyController greedyController(evaluator);
+        BPMNOS::Execution::GreedyController greedyController(evaluator, { .bisect = args.bisect });
         greedyController.connect(&greedyEngine);
         greedyDecisionCounter.connect(&greedyEngine);   // count the baseline's rolled-out decisions for the cutoff
         greedyEngine.run(std::move(greedyScenario), greedyStartTime);
@@ -211,7 +212,7 @@ int main(int argc, char* argv[]) {
   auto scenario = dataProvider->createScenario();
   BPMNOS::Execution::Engine engine(model);
   auto cutoff = (unsigned int)std::ceil(args.cutoff * (double)maxDecisionCount);
-  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ .candidates = args.candidates, .repetitions = args.repetitions, .cutoff = cutoff, .threads = args.threads, .bisection = args.bisection };
+  BPMNOS::Rollout::RolloutController<BPMNOS::Rollout::Results>::Config config{ .candidates = args.candidates, .repetitions = args.repetitions, .cutoff = cutoff, .threads = args.threads, .bisect = args.bisect };
   // Build and subscribe the verbose progress logger here (where the engine is available), then move ownership
   // into the controller, which reports the initial baseline and every update through it (or prints a plain
   // tab-separated table when no logger is given).
