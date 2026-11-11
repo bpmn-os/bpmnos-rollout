@@ -29,9 +29,10 @@ namespace BPMNOS::Rollout {
  * and is comparable with `>` so the best candidate can be selected. It reports itself two ways for progress
  * logging: `stringify()` yields a human-readable summary string, and `jsonify()` yields an
  * `nlohmann::ordered_json` entry. It is held only by `shared_ptr` and never copied, so it may carry
- * arbitrarily heavy statistics. An optional `dominates(const ResultsType&) const` lets a candidate's
- * remaining repetitions be cancelled early once the results of the greedy decision provably beat it, which
- * also excludes it from the choice.
+ * arbitrarily heavy statistics. An optional `dominates(const ResultsType&) const`, together with the recorded
+ * objectives `objectives`, by whose number the dispatcher tells when the results of the greedy decision are
+ * complete, lets a candidate's remaining repetitions be cancelled early once the results of the greedy decision
+ * provably beat it, which also excludes it from the choice.
  */
 template <typename T>
 concept ResultsPolicy =
@@ -53,13 +54,15 @@ class RolloutController;
  * @brief Generic rollout policy dispatcher owning a concrete candidate collection.
  *
  * On each dispatch the RolloutDispatcher collects the top feasible candidate decisions in reward order, the
- * front of which is the greedy decision. Every candidate, the front included, is rolled out `repetitions`
- * times from the current state on its own queue of the shared thread pool, the r-th rollout of every
- * candidate on the fork with index r, so that all candidates are valued on the same predictions; the front is
- * rolled out first, so that an alternative can be cancelled against its complete results. The candidate with
- * the best results is dispatched (ties keep the greedy front). A stored result valuing the greedy decision
- * without rolling it out would be correct only if nothing uncertain had been disclosed since it was
- * computed. When a non-greedy candidate wins, the progress reported is advanced to its results. Header-only so the results type stays an open policy
+ * front of which is the greedy decision. Every alternative is rolled out `repetitions` times from the current
+ * state on its own queue of the shared thread pool, the r-th rollout of every candidate on the fork with
+ * index r, so that all candidates are valued on the same predictions. With a single repetition the front is
+ * valued by the stored baseline. This assumes that a scenario whose future is uncertain is always run with
+ * several repetitions, so that with a single one nothing uncertain is disclosed and the baseline is exactly
+ * the rollout of the front. With several repetitions the front is rolled out as every alternative and
+ * together with them, the baseline having drawn values the run may since have disclosed otherwise, and an
+ * alternative is cancelled against the results of the front once they are complete. The candidate with the best results is dispatched (ties keep the greedy front), and when a
+ * non-greedy candidate wins, the baseline is advanced to its results. Header-only so the results type stays an open policy
  * parameter; the forward simulation of a single candidate is delegated to the non-template Rollout. The
  * results are held by `shared_ptr` and moved, never copied, so a heavy results type is never deep-copied.
  */
@@ -111,14 +114,23 @@ public:
       return decisions.front();
     }
 
-    // Every candidate, the reward-order front (the greedy decision) included, gets its own results, rolled out
-    // `repetitions` times on its own queue from the current state, folding each rollout's final state in under
-    // a mutex, so that all candidates are valued on the same predictions. The front is rolled out first. Once
-    // its results provably dominate an alternative (if the results type supports it), that alternative's
-    // remaining repetitions are cancelled by clearing its queue.
+    // Every candidate gets its own results, rolled out `repetitions` times on its own queue from the current
+    // state, folding each rollout's final state in under a mutex, so that all candidates are valued on the same
+    // predictions. With a single repetition the stored baseline values the reward-order front (the greedy
+    // decision). This assumes that a scenario whose future is uncertain is always run with several
+    // repetitions, so that with a single one nothing is disclosed that the baseline did not contain and the
+    // baseline equals the rollout of the front. With several repetitions the front is rolled out as every
+    // alternative, since the baseline drew values the run may since have disclosed otherwise. All
+    // candidates are rolled out together, so that no thread waits; once the results of the front are complete
+    // and provably dominate an alternative (if the results type supports it), that alternative's remaining
+    // repetitions are cancelled by clearing its queue.
+    const bool noRepetitions = controller->config.repetitions == 1;
     std::vector< std::shared_ptr<ResultsType> > results( decisions.size() );
     for ( std::size_t decisionIndex = 0; decisionIndex < results.size(); ++decisionIndex ) {
       results[decisionIndex] = std::make_shared<ResultsType>();
+    }
+    if ( noRepetitions ) {
+      results[0] = controller->baselineResults;
     }
     std::vector<std::mutex> resultMutexes( decisions.size() );
     // Whether a candidate was cancelled as dominated, which excludes it from the choice whatever the mean of
@@ -129,27 +141,24 @@ public:
       queues.push_back( controller->threadPool.addQueue() );   // one queue per candidate, reused across dispatches
     }
     std::vector< std::future<void> > jobs;
-    for ( std::size_t decisionIndex = 0; decisionIndex < decisions.size(); ++decisionIndex ) {
-      if ( decisionIndex == 1 ) {
-        // the results of the front are complete before an alternative can be cancelled against them
-        for ( auto& job : jobs ) {
-          job.get();
-        }
-        jobs.clear();
-      }
+    for ( std::size_t decisionIndex = noRepetitions ? 1 : 0; decisionIndex < decisions.size(); ++decisionIndex ) {
       for ( unsigned int round = 0; round < controller->config.repetitions; ++round ) {
         jobs.push_back( controller->threadPool.submit( queues[decisionIndex], [this, &decisions, &results, &resultMutexes, &dominated, systemState, decisionIndex, round]() {
           Rollout rollout( decisions[decisionIndex], systemState, evaluator, controller->config.bisect, round, copyMutex );
           if ( auto* finalState = rollout.getSystemState() ) {
             std::lock_guard lock( resultMutexes[decisionIndex] );
             results[decisionIndex]->add( finalState );
-            // Cancel this alternative's remaining repetitions once the front provably dominates it.
-            // Skipped when repetitions == 1: there are no remaining reps to cancel, so the early-stopping
-            // test (and its overhead) is never incurred.
-            if constexpr ( requires ( const ResultsType& a, const ResultsType& b ) { { a.dominates(b) } -> std::convertible_to<bool>; } ) {
-              if ( decisionIndex != 0 && controller->config.repetitions > 1 && results[0]->dominates( *results[decisionIndex] ) ) {
-                dominated[decisionIndex] = true;
-                controller->threadPool.clearQueue( queues[decisionIndex] );
+            // Cancel this alternative's remaining repetitions once the results of the front are complete and
+            // provably dominate it. Skipped when repetitions == 1: there are no remaining reps to cancel, so the
+            // early-stopping test (and its overhead) is never incurred. The mutex of the front is taken while
+            // holding that of the alternative, never the other way round.
+            if constexpr ( requires ( const ResultsType& a, const ResultsType& b ) { { a.dominates(b) } -> std::convertible_to<bool>; { a.objectives.size() } -> std::convertible_to<std::size_t>; } ) {
+              if ( decisionIndex != 0 && controller->config.repetitions > 1 ) {
+                std::lock_guard frontLock( resultMutexes[0] );
+                if ( results[0]->objectives.size() == controller->config.repetitions && results[0]->dominates( *results[decisionIndex] ) ) {
+                  dominated[decisionIndex] = true;
+                  controller->threadPool.clearQueue( queues[decisionIndex] );
+                }
               }
             }
           }
@@ -181,8 +190,8 @@ public:
       }
     }
 
-    // A non-greedy candidate won: the progress reported is advanced (moved) to its results. No later decision
-    // reads them, every candidate being rolled out afresh at every dispatch.
+    // A non-greedy candidate won: the baseline is advanced (moved) to its results, which value the front at
+    // the next dispatch with a single repetition and are reported as progress in either case.
     if ( bestIndex != 0 ) {
       controller->baselineResults = std::move( results[bestIndex] );
       // A progress update is reported by injecting a "rollout" entry into the controller's logger when one is

@@ -35,9 +35,10 @@ namespace BPMNOS::Rollout {
  *                         merged into a single reward-ordered collection.
  *
  * Templated on the results type (the aggregation/selection policy); header-only so it never assumes a
- * particular results type. Every candidate, the greedy decision included, is rolled out from the current
- * state at every decision. The results reported as progress are held by `shared_ptr` and advanced (moved) to
- * the winner's results, so a heavy results type is never deep-copied.
+ * particular results type. Every alternative is rolled out from the current state at every decision; the
+ * greedy decision is valued by the baseline if a single repetition is made, assuming that a scenario whose
+ * future is uncertain is always run with several, and is rolled out as every alternative otherwise. The baseline is held by `shared_ptr` and advanced (moved)
+ * to the winner's results, so a heavy results type is never deep-copied.
  */
 template <ResultsPolicy ResultsType>
 class RolloutController : public BPMNOS::Execution::Controller {
@@ -129,7 +130,7 @@ private:
 
   Config config;
   std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();   ///< construction time; anchors elapsedSeconds() (≈ start of the live run, as the controller is built just before engine.run).
-  std::shared_ptr<ResultsType> baselineResults;   ///< Results reported as progress; starts as the greedy result from the start, reseated to the winner's result whenever a non-greedy candidate is dispatched. Advanced by every rollout dispatcher via the back-pointer; no decision is valued by it.
+  std::shared_ptr<ResultsType> baselineResults;   ///< Baseline reported as progress; starts as the greedy result from the start, reseated to the winner's result whenever a non-greedy candidate is dispatched. Values the greedy decision if a single repetition is made, which assumes that a scenario whose future is uncertain is always run with several, and no decision otherwise. Advanced by every rollout dispatcher via the back-pointer.
   std::unique_ptr<BPMNOS::Execution::Recorder> logger;   ///< Owned sink (built and subscribed by the caller, moved in via the constructor) for baseline entries; null = print plain progress lines. Used by the rollout dispatchers via the back-pointer.
   ThreadPool threadPool;         ///< Shared pool the rollout dispatchers run their rollouts on (sized config.threads).
   DecisionCounter decisionCounter;   ///< counts rolled-out decisions on the main engine; consulted by cutoff() (subscribed only when config.cutoff != 0)
