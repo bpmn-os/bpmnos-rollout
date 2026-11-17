@@ -34,15 +34,15 @@ set(FETCHCONTENT_QUIET FALSE)
 # amalgamated headers include, and bpmn++ with Xerces all arrive as usage requirements of the exported
 # targets, so none of them is named here.
 #
-# The engine is pinned by commit rather than by release tag, because its interfaces are still changing and
-# a tag would promise a stability that is not yet being offered. Move this pin deliberately, together with
-# whatever change in rollout the new revision requires.
+# The engine is fetched at the head of its branch main, so that every configure builds against the engine
+# as it currently is and a change of the engine reaches rollout without a pin to move. A change of an
+# interface the engine makes is therefore met by rollout as soon as it is pushed.
 #
-# No FIND_PACKAGE_ARGS accompanies the pin. It would let an installed engine satisfying the version
+# No FIND_PACKAGE_ARGS accompanies the fetch. It would let an installed engine satisfying the version
 # requirement be used in place of the fetch, and since the declared version does not change with every
-# interface change, an installed engine could shadow the pinned revision and silently supply a different
-# interface. Rollout therefore always builds against the revision named here.
-set(BPMNOS_REF f11768f1eb220f77637da7f4f1b3c8d634f0114b)
+# interface change, an installed engine could shadow the head of main and silently supply a different
+# interface.
+set(BPMNOS_REF main)
 
 FetchContent_Declare(bpmnos
   GIT_REPOSITORY https://github.com/bpmn-os/bpmnos-engine.git
