@@ -7,9 +7,9 @@ using namespace BPMNOS::Model;
 
 namespace BPMNOS::Rollout {
 
-Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, std::optional<size_t> bisect, unsigned int index, std::mutex& copyMutex )
+Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, bool deferral, const std::vector<const Token*>& deferredTokens, const SystemState* foreignState, std::shared_ptr<Evaluator> evaluator, std::optional<size_t> bisect, unsigned int index, std::mutex& copyMutex )
   : engine(foreignState->scenario->dataProvider->getModel())
-  , greedyController(evaluator, { .bisect = bisect })
+  , greedyController(evaluator, deferrals, { .bisect = bisect })
   , evaluator(std::move(evaluator))
 {
   // Connect the sub-engine's greedy policy before installing the state, so its cached candidate sources are
@@ -31,23 +31,36 @@ Rollout::Rollout( const std::shared_ptr<Decision>& selectedDecision, const Syste
     std::lock_guard<std::mutex> lock(copyMutex);
     engine.initializeSystemState(std::move(scenario), foreignState);
   }
-  decision = cloneDecision(selectedDecision);
-  engine.resume(decision);
+  // the installed state ended every deferral of the sub-engine, so that the decision points deferred by the controller
+  // rolling out are deferred anew, each found in the copied state by the instance and the node of a token awaiting it
+  for ( auto token : deferredTokens ) {
+    deferrals.defer( findToken(token) );
+  }
+  if ( deferral ) {
+    auto token = selectedDecision->token.lock();
+    assert( token );
+    deferrals.defer( findToken(token.get()) );
+    engine.resume();
+  }
+  else {
+    decision = cloneDecision(selectedDecision);
+    engine.resume(decision);
+  }
 }
 
-std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ) {
-  // The token is unambiguously identified by its instance identifier and node, both stable across the copy.
-  auto originalToken = original->token.lock();
-  assert( originalToken );
-  auto instanceId = originalToken->getInstanceId();
-  const BPMN::Node* node = originalToken->node;
+const Token* Rollout::findToken( const Token* original ) {
+  // The token is unambiguously identified by its instance identifier and node, both stable across the copy, among the
+  // tokens of the copied state awaiting the same kind of decision.
+  assert( original->decisionRequest );
+  auto instanceId = original->getInstanceId();
+  const BPMN::Node* node = original->node;
   auto* systemState = engine.getSystemState();   // the copy installed by initializeSystemState
 
-  // Find the equivalent token in a pending-decision list of the copied state. The (instance, node) pair must
-  // identify it unambiguously, and — because the copy is a deep copy of the foreign state — the corresponding
-  // token must carry an identical status; otherwise the rollout would force a decision on a different state.
-  auto findToken = [instanceId, node, originalToken]( auto& pending ) -> const BPMNOS::Execution::Token* {
-    const BPMNOS::Execution::Token* found = nullptr;
+  // The (instance, node) pair must identify the token unambiguously, and — because the copy is a deep copy of the
+  // foreign state — the corresponding token must carry an identical status; otherwise the rollout would act on a
+  // different state.
+  auto find = [instanceId, node, original]( auto& pending ) -> const Token* {
+    const Token* found = nullptr;
     for ( auto& [token_ptr,_] : pending ) {
       if ( auto token = token_ptr.lock() ) {
         if ( token->getInstanceId() == instanceId && token->node == node ) {
@@ -59,27 +72,38 @@ std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::
     if ( !found ) {
       throw std::logic_error("Rollout: cannot find token at node '" + node->id + "' for instance '" + BPMNOS::to_string(instanceId, STRING) + "'");
     }
-    assert( found->node == originalToken->node && "Rollout: cloned token has a different node than the original" );
-    assert( found->status.attributes == originalToken->status.attributes && found->status.objects == originalToken->status.objects && "Rollout: cloned token status differs from the original (deep copy not faithful)" );
+    assert( found->status.attributes == original->status.attributes && found->status.objects == original->status.objects && "Rollout: cloned token status differs from the original (deep copy not faithful)" );
     assert( found->decisionRequest && "Rollout: pending token has no decision request" );
     return found;
   };
 
+  switch ( original->decisionRequest->type ) {
+    case Observable::Type::EntryRequest:
+      return find(systemState->pendingEntryDecisions);
+    case Observable::Type::ChoiceRequest:
+      return find(systemState->pendingChoiceDecisions);
+    case Observable::Type::MessageDeliveryRequest:
+      return find(systemState->pendingMessageDeliveryDecisions);
+    default:
+      throw std::logic_error("Rollout: unexpected decision request at node '" + node->id + "'");
+  }
+}
+
+std::shared_ptr<BPMNOS::Execution::Decision> Rollout::cloneDecision( const std::shared_ptr<BPMNOS::Execution::Decision>& original ) {
+  auto originalToken = original->token.lock();
+  assert( originalToken );
+  auto* token = findToken(originalToken.get());
+  auto* systemState = engine.getSystemState();   // the copy installed by initializeSystemState
+
   // Create the equivalent decision for the copied token, carrying the same data.
   if ( dynamic_cast<BPMNOS::Execution::EntryDecision*>(original.get()) ) {
-    if ( auto* token = findToken(systemState->pendingEntryDecisions) ) {
-      return std::make_shared<EntryDecision>(token->decisionRequest.get(), evaluator.get());
-    }
+    return std::make_shared<EntryDecision>(token->decisionRequest.get(), evaluator.get());
   }
   else if ( auto* choice = dynamic_cast<BPMNOS::Execution::ChoiceDecision*>(original.get()) ) {
-    if ( auto* token = findToken(systemState->pendingChoiceDecisions) ) {
-      return std::make_shared<ChoiceDecision>(token->decisionRequest.get(), choice->choices, evaluator.get());
-    }
+    return std::make_shared<ChoiceDecision>(token->decisionRequest.get(), choice->choices, evaluator.get());
   }
   else if ( auto* messageDelivery = dynamic_cast<BPMNOS::Execution::MessageDeliveryDecision*>(original.get()) ) {
-    auto* token = findToken(systemState->pendingMessageDeliveryDecisions);
-    auto originalMessage = messageDelivery->message.lock();
-    if ( token && originalMessage ) {
+    if ( auto originalMessage = messageDelivery->message.lock() ) {
       // The message is identified by its origin (a node pointer stable across the copy) and the sender
       // identifier carried in its header; only a created (not yet delivered or withdrawn) message qualifies.
       auto origin = originalMessage->origin;

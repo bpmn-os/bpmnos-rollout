@@ -27,12 +27,13 @@ namespace BPMNOS::Rollout {
  * decisions completing the forward simulation under a greedy policy, and dispatches the candidate yielding
  * the best final objective.
  *
- * Thus, the controller makes its decisions in the following order, dispatching the first feasible one:
- *  1. `RolloutDispatcher<FirstChoice>` — roll out the alternatives of a choice request, a choice allowing at
- *                         least `config.bisect` values being searched by bisection.
- *  2. `RolloutDispatcher<CompetingCandidates>` — roll out the remaining contested decisions, which have no
- *                         precedence between them: sequential-ad-hoc child entries and message deliveries,
- *                         merged into a single reward-ordered collection.
+ * The decisions compete without precedence: a single `RolloutDispatcher` takes the candidates of the choices, a choice
+ * allowing at least `config.bisect` values being searched by bisection, of the entries and of the message deliveries,
+ * sorts them by their rewards, and rolls out the first `config.candidates` options, which are these candidates and,
+ * after the first candidate of every decision point for which the model states a deferral whose condition holds, the
+ * deferral of that decision point, if a deferral is admissible. The controller holds the deferrals it places, subscribed
+ * to the notifications it forwards, so that a deferral ends at its first reconsideration, and its collections withhold
+ * the candidates of deferred decision points.
  *
  * Templated on the results type (the aggregation/selection policy); header-only so it never assumes a
  * particular results type. Every alternative is rolled out from the current state at every decision; the
@@ -61,12 +62,11 @@ public:
     , logger(std::move(logger))
     , threadPool(config.threads)
   {
-    using namespace BPMNOS::Execution;
-    // Dispatch the first feasible decision in priority order. The choice, and the merged sequential entries
-    // and message deliveries, are rolled out. All rollout dispatchers share the same baseline, advanced in
-    // place to a winner's results.
-    dispatchers.push_back( std::make_unique<RolloutDispatcher<FirstChoice, ResultsType>>(evaluator, this, config.bisect) );
-    dispatchers.push_back( std::make_unique<RolloutDispatcher<CompetingCandidates, ResultsType>>(evaluator, this) ); // sequential ad-hoc entries and message deliveries
+    // the deferrals end at the reconsiderations the controller forwards to them
+    deferrals.connect(this);
+    // The choices, the sequential entries and the message deliveries compete in a single rollout dispatcher, which
+    // advances the baseline in place to a winner's results.
+    dispatchers.push_back( std::make_unique<RolloutDispatcher<ResultsType>>(evaluator, this) );
 
     // Report the initial baseline: inject a "rollout" entry into the logger when one was provided, otherwise
     // print the tab-separated progress header and first row.
@@ -125,16 +125,17 @@ protected:
 private:
   // The rollout dispatchers hold a back-pointer to this controller, read config, threadPool, and cutoff()
   // through it, and advance baselineResults.
-  template <BPMNOS::Execution::CandidateCollection C, ResultsPolicy R>
+  template <ResultsPolicy R>
   friend class RolloutDispatcher;
 
   Config config;
+  BPMNOS::Execution::Deferrals deferrals;   ///< The decision points deferred by the rollout, read by the collections of the dispatcher; declared before the dispatchers, which it outlives
   std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();   ///< construction time; anchors elapsedSeconds() (≈ start of the live run, as the controller is built just before engine.run).
   std::shared_ptr<ResultsType> baselineResults;   ///< Baseline reported as progress; starts as the greedy result from the start, reseated to the winner's result whenever a non-greedy candidate is dispatched. Values the greedy decision if a single repetition is made, which assumes that a scenario whose future is uncertain is always run with several, and no decision otherwise. Advanced by every rollout dispatcher via the back-pointer.
   std::unique_ptr<BPMNOS::Execution::Recorder> logger;   ///< Owned sink (built and subscribed by the caller, moved in via the constructor) for baseline entries; null = print plain progress lines. Used by the rollout dispatchers via the back-pointer.
   ThreadPool threadPool;         ///< Shared pool the rollout dispatchers run their rollouts on (sized config.threads).
   DecisionCounter decisionCounter;   ///< counts rolled-out decisions on the main engine; consulted by cutoff() (subscribed only when config.cutoff != 0)
-  std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > dispatchers;   ///< Dispatched first-feasible in priority order.
+  std::vector< std::unique_ptr<BPMNOS::Execution::EventDispatcher> > dispatchers;   ///< The rollout dispatcher.
 };
 
 } // namespace BPMNOS::Rollout
